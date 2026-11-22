@@ -1,0 +1,62 @@
+using System.IO;
+using System.Text.Json;
+using CoinDetailCompare.App.Models;
+
+namespace CoinDetailCompare.App.Services;
+
+/// <summary>Application settings (appsettings.json).</summary>
+public class AppSettings
+{
+    public string BackendHost { get; set; } = "127.0.0.1";
+    public int BackendPort { get; set; } = 8300;
+
+    public string CoimgDir { get; set; } = @"E:\CoinDetailCompare\coimg";
+    public string DbPath { get; set; } = @"E:\CoinDetailCompare\coimg\catalog.db";
+    public string SchemaPath { get; set; } = @"E:\CoinDetailCompare\shared\sqlite_schema.sql";
+
+    public DeviceType Device { get; set; } = DeviceType.Gpu;
+    public VisionModel Model { get; set; } = VisionModel.VitHPlus16;
+    public int TargetSize { get; set; } = 1024;
+
+    public int HeatmapSize { get; set; } = 128;
+    public double AnomalyThreshold { get; set; } = 0.5;
+    public int NumNormalReferences { get; set; } = 5;
+
+    public string NumistaApiKey { get; set; } = "";
+    public string NumistaBaseUrl { get; set; } = "https://www.numista.com/api/v1";
+
+    public string UiLanguage { get; set; } = "ru";
+    public List<string> EnabledLanguages { get; set; } = new() { "ru", "en" };
+
+    [JsonIgnore]
+    public string BackendBaseUrl => $"http://{BackendHost}:{BackendPort}";
+}
+
+public class SettingsService
+{
+    public AppSettings Current { get; private set; }
+    public string AppSettingsPath { get; }
+
+    public SettingsService(string baseDir)
+    {
+        AppSettingsPath = Path.Combine(baseDir, "appsettings.json");
+        Current = Load(AppSettingsPath);
+    }
+
+    public static AppSettings Load(string path)
+    {
+        if (!File.Exists(path))
+            return new AppSettings();
+        var json = File.ReadAllText(path);
+        return JsonSerializer.Deserialize<AppSettings>(json,
+                   new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+               ?? new AppSettings();
+    }
+
+    public void Save()
+    {
+        var json = JsonSerializer.Serialize(Current,
+            new JsonSerializerOptions { WriteIndented = true });
+        File.WriteAllText(AppSettingsPath, json);
+    }
+}

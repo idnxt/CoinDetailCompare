@@ -1,0 +1,9 @@
+{
+  "ok": true,
+  "crop_path": "E:/CoinDetailCompare/coimg/tmp/crop_obverse_9001.png",
+  "size": 1024,
+  "shape_detected": "circle",
+  "orientation_applied_deg": 3.5,
+  "vector_path": "E:/CoinDetailCompare/coimg/tmp/vector_obverse_9001.npy",
+  "embedding_dim": 1024
+}

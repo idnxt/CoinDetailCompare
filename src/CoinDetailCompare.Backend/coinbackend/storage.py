@@ -1,0 +1,90 @@
+"""Disk + SQLite storage for /coimg and the catalog database.
+
+File naming convention (see docs/DB_SCHEMA.md):
+    /coimg/{id}_{side}.png            photo
+    /coimg/{id}_{side}.npy            DINOv3 vector
+    /coimg/{id}_{side}_heatmap.png    heatmap visualization
+    /coimg/{id}_{side}_heatmap.npy    heatmap matrix (64x64 / 128x128)
+    /coimg/{id}_{side}_layer.json     user vector layer (normalized 0.0..1.0)
+"""
+from __future__ import annotations
+
+import json
+import sqlite3
+from pathlib import Path
+
+from .config import Config
+
+SIDES = ("obverse", "reverse")
+
+
+class Storage:
+    def __init__(self, cfg: Config) -> None:
+        self.cfg = cfg
+        self._init_db()
+
+    # ---- database ----
+    def _init_db(self) -> None:
+        schema = self.cfg.schema_path.read_text(encoding="utf-8")
+        with sqlite3.connect(self.cfg.db_path) as con:
+            con.executescript(schema)
+            con.commit()
+
+    def connect(self) -> sqlite3.Connection:
+        con = sqlite3.connect(self.cfg.db_path)
+        con.row_factory = sqlite3.Row
+        return con
+
+    def next_coin_id(self) -> int:
+        with sqlite3.connect(self.cfg.db_path) as con:
+            cur = con.execute("SELECT MAX(id) FROM coin")
+            row = cur.fetchone()
+            cur.execute("INSERT INTO coin (mint_year) VALUES (NULL) RETURNING id")
+            new_id = cur.fetchone()[0]
+            con.commit()
+        return new_id
+
+    # ---- paths ----
+    def photo_path(self, coin_id: int, side: str) -> Path:
+        return self.cfg.coimg_dir / f"{coin_id}_{side}.png"
+
+    def vector_path(self, coin_id: int, side: str) -> Path:
+        return self.cfg.coimg_dir / f"{coin_id}_{side}.npy"
+
+    def heatmap_image_path(self, coin_id: int, side: str) -> Path:
+        return self.cfg.coimg_dir / f"{coin_id}_{side}_heatmap.png"
+
+    def heatmap_matrix_path(self, coin_id: int, side: str) -> Path:
+        return self.cfg.coimg_dir / f"{coin_id}_{side}_heatmap.npy"
+
+    def layer_path(self, coin_id: int, side: str) -> Path:
+        return self.cfg.coimg_dir / f"{coin_id}_{side}_layer.json"
+
+    def tmp_path(self, name: str) -> Path:
+        return self.cfg.tmp_dir / name
+
+    # ---- user layer (vector primitives in normalized coordinates) ----
+    def save_layer(self, coin_id: int, side: str, layer: dict) -> Path:
+        path = self.layer_path(coin_id, side)
+        path.write_text(json.dumps(layer, ensure_ascii=False, indent=2), encoding="utf-8")
+        return path
+
+    def load_layer(self, coin_id: int, side: str) -> dict | None:
+        path = self.layer_path(coin_id, side)
+        if not path.exists():
+            return None
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    # ---- vector index files on disk ----
+    def index_files(self) -> tuple[Path, Path]:
+        return (
+            self.cfg.coimg_dir / "obverse.faiss",
+            self.cfg.coimg_dir / "reverse.faiss",
+        )
+
+    def iter_vectors(self, side: str):
+        """Yield (coin_id, vector_path) for coins that have a vector for `side`."""
+        for p in self.cfg.coimg_dir.glob(f"*_{side}.npy"):
+            stem = p.name.rsplit("_", 1)[0]
+            coin_id = int(stem)
+            yield coin_id, p

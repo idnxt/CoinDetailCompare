@@ -1,0 +1,7 @@
+{
+  "crop_path": "E:/CoinDetailCompare/coimg/9001_obverse.png",
+  "side": "obverse",
+  "reference_ids": [1337, 1402, 1455],
+  "heatmap_size": 128,
+  "threshold": 0.5
+}

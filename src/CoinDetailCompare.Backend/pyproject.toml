@@ -1,0 +1,27 @@
+[project]
+name = "coinbackend"
+version = "0.1.0"
+description = "CoinDetailCompare Python backend: preprocessing, DINOv3 embedding, FAISS search, anomaly detection."
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "pydantic>=2.7",
+    "numpy>=1.26",
+    "requests>=2.31",
+    "opencv-python>=4.9",
+    "Pillow>=10.0",
+    "python-multipart>=0.0.9",
+    "loguru>=0.7",
+]
+
+[project.optional-dependencies]
+gpu = ["torch>=2.3", "torchvision>=0.18", "faiss-cpu>=1.8"]
+cpu = ["torch>=2.3", "torchvision>=0.18", "faiss-cpu>=1.8"]
+
+[tool.setuptools]
+packages = ["coinbackend"]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"

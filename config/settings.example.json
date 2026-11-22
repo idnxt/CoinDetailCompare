@@ -1,0 +1,31 @@
+{
+  "backend": {
+    "host": "127.0.0.1",
+    "port": 8300
+  },
+  "storage": {
+    "coimg_dir": "E:/CoinDetailCompare/coimg",
+    "tmp_dir": "E:/CoinDetailCompare/coimg/tmp",
+    "db_path": "E:/CoinDetailCompare/coimg/catalog.db"
+  },
+  "vision": {
+    "device": "gpu",
+    "model": "vit-h-plus-16",
+    "target_size": 1024,
+    "min_size": 512,
+    "embedding_dim": 1024
+  },
+  "search": {
+    "topk": 10,
+    "background_color": [200, 200, 200]
+  },
+  "anomaly": {
+    "heatmap_size": 128,
+    "threshold": 0.5,
+    "num_normal_references": 5
+  },
+  "numista": {
+    "api_key": "",
+    "base_url": "https://www.numista.com/api/v1"
+  }
+}

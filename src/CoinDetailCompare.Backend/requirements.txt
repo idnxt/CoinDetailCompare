@@ -1,0 +1,32 @@
+# CoinDetailCompare Python backend
+# Core
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pydantic>=2.7
+numpy>=1.26
+requests>=2.31
+
+# Image / CV
+opencv-python>=4.9
+Pillow>=10.0
+
+# Vision embedding (DINOv3) + anomaly
+# NOTE: install the CUDA wheel matching your GPU (RTX 5070 Ti, CUDA 13.3+).
+# On CPU-only machines use the CPU torch build.
+torch>=2.3
+torchvision>=0.18
+# DINOv3 (official repo) - installed separately, see docs/REFERENCES.md
+#   pip install git+https://github.com/facebookresearch/dinov3
+# faiss-cpu (or faiss-gpu) for vector search
+faiss-cpu>=1.8
+
+# Anomaly detection (priority: SuperADD / anomalib; fallback: AnomalyDINO)
+#   anomalib (Intel)
+#   SuperADD / AnomalyDINO installed from their repos (see docs/REFERENCES.md)
+# Uncomment / pin once a target version is validated in Phase 4:
+# anomalib>=1.0
+# anomaly-dino>=0.2
+
+# Utilities
+python-multipart>=0.0.9
+loguru>=0.7

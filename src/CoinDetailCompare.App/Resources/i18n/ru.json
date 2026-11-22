@@ -1,0 +1,54 @@
+{
+  "app": { "title": "CoinDetailCompare — каталогизация монет" },
+  "capture": {
+    "shoot_obverse": "Снять аверс",
+    "shoot_reverse": "Снять реверс",
+    "batch_mode": "Пакетный режим",
+    "album": "Альбом",
+    "page": "Страница",
+    "order": "Порядок",
+    "rotation": "Угол (°)",
+    "camera_offline": "Камера не подключена"
+  },
+  "compare": {
+    "current": "Текущее",
+    "base": "Базовое",
+    "match_obverse": "Совпадение аверса",
+    "match_reverse": "Совпадение реверса",
+    "orientation": "Вариант",
+    "etalon_quality": "Эталон (сохранность)",
+    "search": "Найти похожие"
+  },
+  "actions": {
+    "swap_sides": "Поменять местами аверс/реверс",
+    "duplicate": "Добавить как дубликат",
+    "variant": "Добавить в другой сохранности",
+    "anomaly": "Добавить как аномалию",
+    "not_determined": "Определена некорректно / не определена",
+    "save_coin": "Сохранить монету",
+    "rebuild_index": "Пересобрать индекс",
+    "anomaly_desc": "Описание аномалии"
+  },
+  "numista": {
+    "manual_link": "Ручная ссылка (Numista)",
+    "search_by_api": "Поиск по API",
+    "search_placeholder": "Например: 5 рублей 1991 СССР",
+    "no_api_key": "API-ключ не задан — доступен только ручной ввод ссылки"
+  },
+  "settings": {
+    "language": "Язык",
+    "device": "Устройство",
+    "model": "Модель",
+    "gpu": "GPU",
+    "cpu": "CPU",
+    "heatmap_size": "Размер heatmap",
+    "coimg_dir": "Каталог /coimg",
+    "api_key": "Numista API-ключ"
+  },
+  "status": {
+    "backend_ok": "Бэкенд доступен",
+    "backend_down": "Бэкенд недоступен",
+    "saved": "Монета сохранена",
+    "error": "Ошибка"
+  }
+}

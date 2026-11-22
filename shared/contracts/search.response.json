@@ -1,0 +1,21 @@
+{
+  "query_side": "obverse",
+  "oriented": true,
+  "candidates": [
+    {
+      "coin_id": 1337,
+      "type_id": 42,
+      "quality": "VF",
+      "obverse_pct": 91.2,
+      "reverse_pct": 88.4,
+      "overall_pct": 89.8,
+      "orientation": "A-A+R-R",
+      "etalon_photo_obverse": "E:/CoinDetailCompare/coimg/1337_obverse.png",
+      "etalon_photo_reverse": "E:/CoinDetailCompare/coimg/1337_reverse.png"
+    }
+  ],
+  "sides": {
+    "obverse": { "coin_id": 1337, "pct": 91.2 },
+    "reverse": { "coin_id": 1337, "pct": 88.4 }
+  }
+}

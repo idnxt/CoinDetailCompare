@@ -1,0 +1,52 @@
+using System.Net.Http;
+using System.Net.Http.Json;
+using System.Text.Json;
+using CoinDetailCompare.App.Models;
+
+namespace CoinDetailCompare.App.Services;
+
+/// <summary>Thin HTTP client for the local Python backend (only lightweight JSON).</summary>
+public class BackendClient
+{
+    private readonly HttpClient _http;
+    private static readonly JsonSerializerOptions Opts = new()
+    {
+        PropertyNameCaseInsensitive = true,
+    };
+
+    public BackendClient(string baseUrl)
+    {
+        _http = new HttpClient { BaseAddress = new Uri(baseUrl), Timeout = TimeSpan.FromSeconds(120) };
+    }
+
+    public Task<HealthDto?> HealthAsync()
+        => _http.GetFromJsonAsync<HealthDto>("/health", Opts);
+
+    public async Task<PreprocessResponse?> PreprocessAsync(PreprocessRequest req)
+        => await ContinueAsync(_http.PostAsJsonAsync("/preprocess", req, Opts));
+
+    public async Task<SearchResponse?> SearchAsync(SearchRequest req)
+        => await ContinueAsync(_http.PostAsJsonAsync("/search", req, Opts));
+
+    public async Task<AnomalyResponse?> AnomalyAsync(AnomalyRequest req)
+        => await ContinueAsync(_http.PostAsJsonAsync("/anomaly", req, Opts));
+
+    public async Task<NumistaSearchResponse?> NumistaSearchAsync(NumistaSearchRequest req)
+        => await ContinueAsync(_http.PostAsJsonAsync("/numista/search", req, Opts));
+
+    public async Task<Dictionary<string, int>?> RebuildIndexAsync()
+        => await ContinueAsync(_http.PostAsync("/index/rebuild", null, Opts));
+
+    public async Task<Dictionary<string, string>?> ParseNumistaLinkAsync(string link)
+        => await ContinueAsync(_http.PostAsJsonAsync("/numista/parse", new { link }, Opts));
+
+    private static async Task<T?> ContinueAsync<T>(Task<HttpResponseMessage> task)
+    {
+        var resp = await task;
+        if (!resp.IsSuccessStatusCode)
+            return null;
+        return await resp.Content.ReadFromJsonAsync<T>(Opts);
+    }
+
+    public void Dispose() => _http.Dispose();
+}

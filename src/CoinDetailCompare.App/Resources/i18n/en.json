@@ -1,0 +1,54 @@
+{
+  "app": { "title": "CoinDetailCompare — coin cataloging" },
+  "capture": {
+    "shoot_obverse": "Shoot obverse",
+    "shoot_reverse": "Shoot reverse",
+    "batch_mode": "Batch mode",
+    "album": "Album",
+    "page": "Page",
+    "order": "Order",
+    "rotation": "Angle (deg)",
+    "camera_offline": "Camera not connected"
+  },
+  "compare": {
+    "current": "Current",
+    "base": "Reference",
+    "match_obverse": "Obverse match",
+    "match_reverse": "Reverse match",
+    "orientation": "Orientation",
+    "etalon_quality": "Reference (grade)",
+    "search": "Find similar"
+  },
+  "actions": {
+    "swap_sides": "Swap obverse/reverse",
+    "duplicate": "Add as duplicate",
+    "variant": "Add with different grade",
+    "anomaly": "Add as anomaly",
+    "not_determined": "Misidentified / not determined",
+    "save_coin": "Save coin",
+    "rebuild_index": "Rebuild index",
+    "anomaly_desc": "Anomaly description"
+  },
+  "numista": {
+    "manual_link": "Manual link (Numista)",
+    "search_by_api": "Search by API",
+    "search_placeholder": "E.g.: 5 rubles 1991 USSR",
+    "no_api_key": "No API key — manual link entry only"
+  },
+  "settings": {
+    "language": "Language",
+    "device": "Device",
+    "model": "Model",
+    "gpu": "GPU",
+    "cpu": "CPU",
+    "heatmap_size": "Heatmap size",
+    "coimg_dir": "/coimg directory",
+    "api_key": "Numista API key"
+  },
+  "status": {
+    "backend_ok": "Backend available",
+    "backend_down": "Backend unavailable",
+    "saved": "Coin saved",
+    "error": "Error"
+  }
+}
