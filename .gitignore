@@ -26,6 +26,7 @@ dist/
 # ---- Windows / C# ----
 bin/
 obj/
+.nuget-local/
 *.user
 .vs/
 .vscode/
