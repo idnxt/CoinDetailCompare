@@ -97,6 +97,43 @@ public class DbService
         return MapCoin(r);
     }
 
+    public CoinType? GetCoinType(int id)
+    {
+        using var conn = Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT * FROM coin_type WHERE id=@id;";
+        cmd.Parameters.AddWithValue("@id", id);
+        using var r = cmd.ExecuteReader();
+        if (!r.Read()) return null;
+        return new CoinType
+        {
+            Id = r.GetInt32("id"),
+            NumistaN = r.IsDBNull("numista_n") ? null : r.GetString("numista_n"),
+            NumistaUrl = r.IsDBNull("numista_url") ? null : r.GetString("numista_url"),
+            Name = r.IsDBNull("name") ? null : r.GetString("name"),
+            Issuer = r.IsDBNull("issuer") ? null : r.GetString("issuer"),
+            Period = r.IsDBNull("period") ? null : r.GetString("period"),
+            Type = r.IsDBNull("type") ? null : r.GetString("type"),
+            Years = r.IsDBNull("years") ? null : r.GetString("years"),
+            Calendar = r.IsDBNull("calendar") ? null : r.GetString("calendar"),
+            Value = r.IsDBNull("value") ? null : r.GetString("value"),
+            Rate = r.IsDBNull("rate") ? null : r.GetString("rate"),
+            Currency = r.IsDBNull("currency") ? null : r.GetString("currency"),
+            Composition = r.IsDBNull("composition") ? null : r.GetString("composition"),
+            Mass = r.IsDBNull("mass") ? null : r.GetString("mass"),
+            Diameter = r.IsDBNull("diameter") ? null : r.GetString("diameter"),
+            Thickness = r.IsDBNull("thickness") ? null : r.GetString("thickness"),
+            Shape = r.IsDBNull("shape") ? null : r.GetString("shape"),
+            Technique = r.IsDBNull("technique") ? null : r.GetString("technique"),
+            Orientation = r.IsDBNull("orientation") ? null : r.GetString("orientation"),
+            IssuedDate = r.IsDBNull("issued_date") ? null : r.GetString("issued_date"),
+            Links = r.IsDBNull("links") ? null : r.GetString("links"),
+            ObverseText = r.IsDBNull("obverse_text") ? null : r.GetString("obverse_text"),
+            ReverseText = r.IsDBNull("reverse_text") ? null : r.GetString("reverse_text"),
+            RimText = r.IsDBNull("rim_text") ? null : r.GetString("rim_text"),
+        };
+    }
+
     public List<Coin> ListByAlbum(string albumName, int pageNo)
     {
         using var conn = Open();

@@ -1,26 +1,50 @@
 {
   "app": { "title": "CoinDetailCompare — coin cataloging" },
   "capture": {
-    "shoot_obverse": "Shoot obverse",
-    "shoot_reverse": "Shoot reverse",
-    "batch_mode": "Batch mode",
+    "section": "Capture",
     "album": "Album",
     "page": "Page",
     "order": "Order",
     "rotation": "Angle (deg)",
+    "shoot_obverse": "Shoot obverse",
+    "shoot_reverse": "Shoot reverse",
+    "load_obverse": "Load obverse (file)",
+    "load_reverse": "Load reverse (file)",
+    "swap_sides": "Swap obverse/reverse",
+    "batch_mode": "Batch mode",
+    "batch_coins": "Coin count",
+    "open_camera": "Open camera",
+    "start_batch": "Start batch capture",
+    "capture_frame": "Capture frame",
+    "cancel_batch": "Cancel capture",
+    "save_all": "Save all coins of the batch",
+    "obverse": "Obverse",
+    "reverse": "Reverse",
     "camera_offline": "Camera not connected"
   },
   "compare": {
+    "section": "Comparison",
     "current": "Current",
-    "base": "Reference",
+    "base": "Reference (etalon)",
     "match_obverse": "Obverse match",
     "match_reverse": "Reverse match",
     "orientation": "Orientation",
-    "etalon_quality": "Reference (grade)",
-    "search": "Find similar"
+    "search": "Find similar",
+    "rebuild": "Rebuild index",
+    "annotation_hint": "Draw over the photo: line — drag, ellipse/arrow — from start to end."
+  },
+  "annotation": {
+    "tool_line": "Line",
+    "tool_ellipse": "Ellipse",
+    "tool_arrow": "Arrow",
+    "undo": "Undo",
+    "clear": "Clear",
+    "save_layer": "Save layer"
   },
   "actions": {
+    "section": "Actions",
     "swap_sides": "Swap obverse/reverse",
+    "save_match": "Save (match)",
     "duplicate": "Add as duplicate",
     "variant": "Add with different grade",
     "anomaly": "Add as anomaly",
@@ -30,25 +54,53 @@
     "anomaly_desc": "Anomaly description"
   },
   "numista": {
-    "manual_link": "Manual link (Numista)",
+    "section": "Numista",
+    "manual_link": "Manual link",
+    "link_example": "E.g.: https://www.numista.com/3023",
+    "validate_link": "Validate link",
     "search_by_api": "Search by API",
     "search_placeholder": "E.g.: 5 rubles 1991 USSR",
-    "no_api_key": "No API key — manual link entry only"
+    "search": "Search",
+    "apply_item": "Apply to card"
   },
-  "settings": {
-    "language": "Language",
-    "device": "Device",
-    "model": "Model",
-    "gpu": "GPU",
-    "cpu": "CPU",
-    "heatmap_size": "Heatmap size",
-    "coimg_dir": "/coimg directory",
-    "api_key": "Numista API key"
+  "coin": {
+    "section": "Coin attributes",
+    "mint_year": "Mint year",
+    "mint": "Mint",
+    "quality": "Condition (grade)",
+    "anomaly_desc": "Anomaly description",
+    "save_attributes": "Save attributes"
+  },
+  "type": {
+    "section": "Type card",
+    "name": "Name",
+    "issuer": "Issuer",
+    "period": "Period",
+    "value": "Denomination",
+    "currency": "Currency",
+    "diameter": "Diameter, mm",
+    "years": "Years",
+    "composition": "Composition",
+    "mass": "Mass, g",
+    "thickness": "Thickness, mm",
+    "shape": "Shape",
+    "technique": "Technique",
+    "orientation": "Orientation",
+    "numista_url": "Numista (URL)",
+    "load_type": "Load type",
+    "save_type": "Save type"
+  },
+  "anomaly": {
+    "check": "Check anomalies",
+    "detected": "Anomaly detected",
+    "ok": "No anomalies found",
+    "score": "Score"
   },
   "status": {
     "backend_ok": "Backend available",
     "backend_down": "Backend unavailable",
     "saved": "Coin saved",
-    "error": "Error"
+    "error": "Error",
+    "language": "Language"
   }
 }

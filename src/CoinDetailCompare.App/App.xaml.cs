@@ -21,9 +21,18 @@ public partial class App : Application
         var loc = new LocalizationService(Path.Combine(baseDir, "Resources", "i18n"));
         loc.SetLanguage(settings.UiLanguage);
 
-        var vm = new MainViewModel(settings, backend, db, camera, loc);
+        // XAML binds labels via {Binding ['key'], Source={StaticResource Strings}}.
+        var strings = new Strings(loc);
+        Resources["Strings"] = strings;
+
+        var vm = new MainViewModel(settings, backend, db, camera, loc, strings);
         var window = new MainWindow { DataContext = vm };
-        window.Title = loc.T("app.title");
+        window.Title = strings["app.title"];
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(MainViewModel.Language) && MainWindow != null)
+                MainWindow.Title = strings["app.title"];
+        };
         MainWindow = window;
         window.Show();
     }

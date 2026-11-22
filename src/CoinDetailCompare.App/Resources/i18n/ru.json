@@ -1,26 +1,50 @@
 {
   "app": { "title": "CoinDetailCompare — каталогизация монет" },
   "capture": {
-    "shoot_obverse": "Снять аверс",
-    "shoot_reverse": "Снять реверс",
-    "batch_mode": "Пакетный режим",
+    "section": "Съёмка",
     "album": "Альбом",
     "page": "Страница",
     "order": "Порядок",
     "rotation": "Угол (°)",
+    "shoot_obverse": "Снять аверс",
+    "shoot_reverse": "Снять реверс",
+    "load_obverse": "Загрузить аверс (файл)",
+    "load_reverse": "Загрузить реверс (файл)",
+    "swap_sides": "Поменять аверс/реверс",
+    "batch_mode": "Пакетный режим",
+    "batch_coins": "Кол-во монет",
+    "open_camera": "Открыть камеру",
+    "start_batch": "Старт пакетной съёмки",
+    "capture_frame": "Сделать кадр",
+    "cancel_batch": "Отменить съёмку",
+    "save_all": "Сохранить все монеты пакета",
+    "obverse": "Аверс",
+    "reverse": "Реверс",
     "camera_offline": "Камера не подключена"
   },
   "compare": {
+    "section": "Сравнение",
     "current": "Текущее",
-    "base": "Базовое",
+    "base": "Базовое (эталон)",
     "match_obverse": "Совпадение аверса",
     "match_reverse": "Совпадение реверса",
     "orientation": "Вариант",
-    "etalon_quality": "Эталон (сохранность)",
-    "search": "Найти похожие"
+    "search": "Найти похожие",
+    "rebuild": "Пересобрать индекс",
+    "annotation_hint": "Рисуйте поверх фото: линия — перетаскивание, эллипс/стрелка — от старта к концу."
+  },
+  "annotation": {
+    "tool_line": "Линия",
+    "tool_ellipse": "Эллипс",
+    "tool_arrow": "Стрелка",
+    "undo": "Отменить",
+    "clear": "Очистить",
+    "save_layer": "Сохранить слой"
   },
   "actions": {
+    "section": "Действия",
     "swap_sides": "Поменять местами аверс/реверс",
+    "save_match": "Сохранить (совпадение)",
     "duplicate": "Добавить как дубликат",
     "variant": "Добавить в другой сохранности",
     "anomaly": "Добавить как аномалию",
@@ -30,25 +54,53 @@
     "anomaly_desc": "Описание аномалии"
   },
   "numista": {
-    "manual_link": "Ручная ссылка (Numista)",
+    "section": "Numista",
+    "manual_link": "Ручная ссылка",
+    "link_example": "Например: https://ru.numista.com/3023",
+    "validate_link": "Проверить ссылку",
     "search_by_api": "Поиск по API",
     "search_placeholder": "Например: 5 рублей 1991 СССР",
-    "no_api_key": "API-ключ не задан — доступен только ручной ввод ссылки"
+    "search": "Поиск",
+    "apply_item": "Подставить в карточку"
   },
-  "settings": {
-    "language": "Язык",
-    "device": "Устройство",
-    "model": "Модель",
-    "gpu": "GPU",
-    "cpu": "CPU",
-    "heatmap_size": "Размер heatmap",
-    "coimg_dir": "Каталог /coimg",
-    "api_key": "Numista API-ключ"
+  "coin": {
+    "section": "Атрибуты монеты",
+    "mint_year": "Год чеканки",
+    "mint": "Монетный двор",
+    "quality": "Состояние (сохранность)",
+    "anomaly_desc": "Описание аномалии",
+    "save_attributes": "Сохранить атрибуты"
+  },
+  "type": {
+    "section": "Карточка типа",
+    "name": "Наименование",
+    "issuer": "Эмиссия",
+    "period": "Период",
+    "value": "Номинал",
+    "currency": "Валюта",
+    "diameter": "Диаметр, мм",
+    "years": "Годы",
+    "composition": "Состав",
+    "mass": "Масса, г",
+    "thickness": "Толщина, мм",
+    "shape": "Форма",
+    "technique": "Техника",
+    "orientation": "Ориентация",
+    "numista_url": "Numista (URL)",
+    "load_type": "Загрузить тип",
+    "save_type": "Сохранить тип"
+  },
+  "anomaly": {
+    "check": "Проверить аномалии",
+    "detected": "Обнаружена аномалия",
+    "ok": "Аномалий не обнаружено",
+    "score": "Оценка"
   },
   "status": {
     "backend_ok": "Бэкенд доступен",
     "backend_down": "Бэкенд недоступен",
     "saved": "Монета сохранена",
-    "error": "Ошибка"
+    "error": "Ошибка",
+    "language": "Язык"
   }
 }

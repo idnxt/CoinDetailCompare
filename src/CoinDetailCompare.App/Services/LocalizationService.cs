@@ -13,6 +13,8 @@ public class LocalizationService
     private Dictionary<string, string> _current = new();
     public string CurrentLanguage { get; private set; } = "ru";
 
+    public List<string> Keys => new(_current.Keys);
+
     public LocalizationService(string i18nDir)
     {
         _i18nDir = i18nDir;

@@ -28,17 +28,26 @@ public class BackendClient
     public async Task<SearchResponse?> SearchAsync(SearchRequest req)
         => await ContinueAsync(_http.PostAsJsonAsync("/search", req, Opts));
 
+    public async Task<EmbedResponse?> EmbedAsync(EmbedRequest req)
+        => await ContinueAsync(_http.PostAsJsonAsync("/embed", req, Opts));
+
     public async Task<AnomalyResponse?> AnomalyAsync(AnomalyRequest req)
         => await ContinueAsync(_http.PostAsJsonAsync("/anomaly", req, Opts));
 
     public async Task<NumistaSearchResponse?> NumistaSearchAsync(NumistaSearchRequest req)
         => await ContinueAsync(_http.PostAsJsonAsync("/numista/search", req, Opts));
 
+    public async Task<ReferencesResponse?> ReferencesAsync(string? kind = null)
+    {
+        var url = "/references" + (kind == null ? "" : $"?kind={Uri.EscapeDataString(kind)}");
+        return await _http.GetFromJsonAsync<ReferencesResponse>(url, Opts);
+    }
+
     public async Task<Dictionary<string, int>?> RebuildIndexAsync()
         => await ContinueAsync(_http.PostAsync("/index/rebuild", null, Opts));
 
-    public async Task<Dictionary<string, string>?> ParseNumistaLinkAsync(string link)
-        => await ContinueAsync(_http.PostAsJsonAsync("/numista/parse", new { link }, Opts));
+    public async Task<NumistaParseResponse?> ParseNumistaLinkAsync(string link, bool fetchMeta = false)
+        => await ContinueAsync(_http.PostAsJsonAsync("/numista/parse", new { link, fetch_meta = fetchMeta }, Opts));
 
     private static async Task<T?> ContinueAsync<T>(Task<HttpResponseMessage> task)
     {

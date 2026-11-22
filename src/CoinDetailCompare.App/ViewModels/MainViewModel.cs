@@ -1,6 +1,8 @@
+using System.Collections.ObjectModel;
 using System.IO;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using CoinDetailCompare.App.Controls;
 using CoinDetailCompare.App.Models;
 using CoinDetailCompare.App.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -15,6 +17,11 @@ public class MainViewModel : ObservableObject
     private readonly DbService _db;
     private readonly ICameraDevice _camera;
     private readonly LocalizationService _loc;
+    private readonly Strings _strings;
+
+    // ---- language / i18n ----
+    private string _language = "ru";
+    private string _annotationToolName = "";
 
     private string _status = "";
     private string _album = "";
@@ -34,6 +41,22 @@ public class MainViewModel : ObservableObject
     private string _numistaLink = "";
     private int? _currentCoinId;
 
+    // ---- anomaly / heatmap ----
+    private ImageSource? _heatmapImage;
+    private double _anomalyScore;
+    private bool _isAnomaly;
+    private string _anomalyStatus = "";
+
+    // ---- annotation layer ----
+    private AnnotationTool _annotationTool = AnnotationTool.Path;
+    private string _annotationColor = "#FFFF3030";
+
+    // ---- coin attribute editing ----
+    private string _mintYear = "";
+    private string _mint = "";
+    private string _quality = "";
+    private string _anomalyDesc = "";
+
     // ---- batch capture state ----
     private string _batchAlbum = "";
     private int _batchPage;
@@ -45,13 +68,20 @@ public class MainViewModel : ObservableObject
     private readonly List<string> _batchReverse = new();
 
     public MainViewModel(AppSettings settings, BackendClient backend, DbService db,
-        ICameraDevice camera, LocalizationService loc)
+        ICameraDevice camera, LocalizationService loc, Strings strings)
     {
         _settings = settings;
         _backend = backend;
         _db = db;
         _camera = camera;
         _loc = loc;
+        _strings = strings;
+        _language = loc.CurrentLanguage;
+        _annotationToolName = _strings["annotation.tool_line"];
+
+        Languages = new() { "ru", "en" };
+        AnnotationToolItems = new();
+        RebuildAnnotationToolItems();
 
         ShootObverseCommand = new RelayCommand(async () => await ShootAsync(CoinSide.Obverse));
         ShootReverseCommand = new RelayCommand(async () => await ShootAsync(CoinSide.Reverse));
@@ -71,6 +101,17 @@ public class MainViewModel : ObservableObject
         CaptureNextCommand = new RelayCommand(async () => await CaptureNextAsync());
         CancelBatchCommand = new RelayCommand(CancelBatch);
         SaveBatchCommand = new RelayCommand(async SaveBatchAsync);
+        SaveAttributesCommand = new RelayCommand(async SaveAttributesAsync);
+        LoadTypeCommand = new RelayCommand(async LoadTypeAsync);
+        SaveTypeCommand = new RelayCommand(async SaveTypeAsync);
+        RunAnomalyCommand = new RelayCommand(async RunAnomalyAsync);
+        ValidateNumistaCommand = new RelayCommand(async ValidateNumistaAsync);
+        ApplyNumistaItemCommand = new RelayCommand(() => ApplyNumistaItem());
+        UndoAnnotationCommand = new RelayCommand(UndoAnnotation);
+        ClearAnnotationsCommand = new RelayCommand(ClearAnnotations);
+        SaveAnnotationsCommand = new RelayCommand(async () => await SaveAnnotationsAsync());
+
+        _ = LoadReferencesAsync();
     }
 
     // ---- bindable properties ----
@@ -91,6 +132,101 @@ public class MainViewModel : ObservableObject
     public string NumistaQuery { get => _numistaQuery; set => SetProperty(ref _numistaQuery, value); }
     public string NumistaLink { get => _numistaLink; set => SetProperty(ref _numistaLink, value); }
     public int? CurrentCoinId => _currentCoinId;
+
+    // ---- attribute editing properties ----
+    public string MintYear { get => _mintYear; set => SetProperty(ref _mintYear, value); }
+    public string Mint { get => _mint; set => SetProperty(ref _mint, value); }
+    public string Quality { get => _quality; set => SetProperty(ref _quality, value); }
+    public string AnomalyDesc { get => _anomalyDesc; set => SetProperty(ref _anomalyDesc, value); }
+    public ObservableCollection<string> QualityItems { get; } = new();
+    public ObservableCollection<string> OrientationItems { get; } = new();
+    public TypeEditor TypeEditor { get; } = new();
+    public bool TypeLoaded => TypeEditor.Id > 0;
+
+    // ---- anomaly / heatmap ----
+    public ImageSource? HeatmapImage { get => _heatmapImage; private set => SetProperty(ref _heatmapImage, value); }
+    public double AnomalyScore { get => _anomalyScore; private set => SetProperty(ref _anomalyScore, value); }
+    public bool IsAnomaly { get => _isAnomaly; private set => SetProperty(ref _isAnomaly, value); }
+    public string AnomalyStatus { get => _anomalyStatus; private set => SetProperty(ref _anomalyStatus, value); }
+
+    // ---- annotation layer ----
+    public ObservableCollection<AnnotationItem> AnnotationItems { get; } = new();
+    public AnnotationTool AnnotationTool
+    {
+        get => _annotationTool;
+        set => SetProperty(ref _annotationTool, value);
+    }
+    public string AnnotationColor
+    {
+        get => _annotationColor;
+        set => SetProperty(ref _annotationColor, value);
+    }
+    public List<AnnotationTool> AnnotationTools { get; } = Enum.GetValues<AnnotationTool>().ToList();
+    public ObservableCollection<string> AnnotationToolItems { get; }
+    public string AnnotationToolName
+    {
+        get => _annotationToolName;
+        set
+        {
+            if (SetProperty(ref _annotationToolName, value))
+            {
+                // order in AnnotationToolItems: line, ellipse, arrow
+                AnnotationTool = AnnotationToolItems.IndexOf(value) switch
+                {
+                    1 => AnnotationTool.Ellipse,
+                    2 => AnnotationTool.Arrow,
+                    _ => AnnotationTool.Path,
+                };
+            }
+        }
+    }
+
+    // ---- language / i18n ----
+    public ObservableCollection<string> Languages { get; }
+    public string Language
+    {
+        get => _language;
+        set
+        {
+            if (!SetProperty(ref _language, value))
+                return;
+            _strings.SetLanguage(value);
+            RebuildAnnotationToolItems();
+            OnPropertyChanged(nameof(T)); // status strings refreshed by consumers via T()
+        }
+    }
+
+    private static string ToolKeyFor(AnnotationTool tool) => tool switch
+    {
+        AnnotationTool.Path => "annotation.tool_line",
+        AnnotationTool.Ellipse => "annotation.tool_ellipse",
+        AnnotationTool.Arrow => "annotation.tool_arrow",
+        _ => "annotation.tool_line",
+    };
+
+    private static AnnotationTool ToolFor(string key) => key switch
+    {
+        "annotation.tool_ellipse" => AnnotationTool.Ellipse,
+        "annotation.tool_arrow" => AnnotationTool.Arrow,
+        _ => AnnotationTool.Path,
+    };
+
+    private void RebuildAnnotationToolItems()
+    {
+        var current = ToolKeyFor(AnnotationTool);
+        AnnotationToolItems.Clear();
+        foreach (var key in new[]
+                 {
+                     "annotation.tool_line",
+                     "annotation.tool_ellipse",
+                     "annotation.tool_arrow",
+                 })
+        {
+            AnnotationToolItems.Add(_strings[key]);
+        }
+        _annotationToolName = _strings[current];
+        SetProperty(ref _annotationToolName, _annotationToolName);
+    }
 
     // ---- batch properties ----
     public string BatchAlbum { get => _batchAlbum; set => SetProperty(ref _batchAlbum, value); }
@@ -120,6 +256,15 @@ public class MainViewModel : ObservableObject
     public RelayCommand CaptureNextCommand { get; }
     public RelayCommand CancelBatchCommand { get; }
     public RelayCommand SaveBatchCommand { get; }
+    public RelayCommand SaveAttributesCommand { get; }
+    public RelayCommand LoadTypeCommand { get; }
+    public RelayCommand SaveTypeCommand { get; }
+    public RelayCommand RunAnomalyCommand { get; }
+    public RelayCommand UndoAnnotationCommand { get; }
+    public RelayCommand ClearAnnotationsCommand { get; }
+    public RelayCommand SaveAnnotationsCommand { get; }
+    public RelayCommand ValidateNumistaCommand { get; }
+    public RelayCommand ApplyNumistaItemCommand { get; }
 
     public string T(string key) => _loc.T(key);
 
@@ -399,7 +544,7 @@ public class MainViewModel : ObservableObject
         BatchStatus = $"matched {BatchResults.Count} coins";
     }
 
-    /// <summary>Save every batch coin with album/page and photo-order numbering.</summary>
+    /// <summary>Save every batch coin: embed + persist crops, then write DB rows.</summary>
     private async Task SaveBatchAsync()
     {
         int saved = 0;
@@ -407,14 +552,26 @@ public class MainViewModel : ObservableObject
         {
             var r = BatchResults[i];
             var id = _db.NextCoinId();
+            string? ovPhoto = r.ObversePath, revPhoto = r.ReversePath, ovVec = null, revVec = null;
+            var embed = await _backend.EmbedAsync(new EmbedRequest(id, r.ObversePath, r.ReversePath));
+            if (embed is { ok: true })
+            {
+                foreach (var s in embed.sides)
+                {
+                    if (s.side == "obverse") { ovPhoto = s.photo_path; ovVec = s.vector_path; }
+                    else { revPhoto = s.photo_path; revVec = s.vector_path; }
+                }
+            }
             var coin = new Coin
             {
                 Id = id,
                 AlbumName = string.IsNullOrEmpty(BatchAlbum) ? Album : BatchAlbum,
                 PageNo = BatchPage,
                 OrderNo = r.OrderNo,
-                ObversePhoto = r.ObversePath,
-                ReversePhoto = r.ReversePath,
+                ObversePhoto = ovPhoto,
+                ReversePhoto = revPhoto,
+                ObverseVector = ovVec,
+                ReverseVector = revVec,
                 SourceKind = r.TopCoinId != null ? SourceKind.Match : SourceKind.Manual,
                 EtalonId = r.TopCoinId,
             };
@@ -450,7 +607,7 @@ public class MainViewModel : ObservableObject
                 ObversePct = Math.Round(top.obverse_pct, 1);
                 ReversePct = Math.Round(top.reverse_pct, 1);
                 Orientation = top.orientation;
-                _currentCoinId = top.coin_id;
+                ApplyCoinAttributes(top.coin_id);
                 if (!string.IsNullOrEmpty(top.etalon_photo.obverse))
                     EtalonImage = LoadImage(top.etalon_photo.obverse);
                 Status = $"top match: {top.coin_id} ({top.overall_pct:F1}%)";
@@ -476,7 +633,27 @@ public class MainViewModel : ObservableObject
     // ==================== save ====================
     private async Task SaveAsync(SourceKind kind)
     {
+        if (string.IsNullOrEmpty(_obversePath) && string.IsNullOrEmpty(_reversePath))
+        {
+            Status = T("status.error");
+            return;
+        }
         var id = _db.NextCoinId();
+        string? ovPhoto = _obversePath, revPhoto = _reversePath, ovVec = null, revVec = null;
+        var embed = await _backend.EmbedAsync(new EmbedRequest(id, _obversePath, _reversePath));
+        if (embed is { ok: true })
+        {
+            foreach (var s in embed.sides)
+            {
+                if (s.side == "obverse") { ovPhoto = s.photo_path; ovVec = s.vector_path; }
+                else { revPhoto = s.photo_path; revVec = s.vector_path; }
+            }
+        }
+        else
+        {
+            Status = embed?.error ?? T("status.error");
+            return;
+        }
         var coin = new Coin
         {
             Id = id,
@@ -486,13 +663,16 @@ public class MainViewModel : ObservableObject
             AlbumName = Album,
             PageNo = PageNo,
             OrderNo = OrderNo,
-            ObversePhoto = _obversePath,
-            ReversePhoto = _reversePath,
+            ObversePhoto = ovPhoto,
+            ReversePhoto = revPhoto,
+            ObverseVector = ovVec,
+            ReverseVector = revVec,
             SourceKind = kind,
             IsAnomaly = kind == SourceKind.Anomaly,
             EtalonId = _currentCoinId,
         };
         _db.SaveCoin(coin);
+        _currentCoinId = id;
         Status = T("status.saved");
     }
 
@@ -513,18 +693,261 @@ public class MainViewModel : ObservableObject
     }
 
     // ==================== numista ====================
+    private NumistaItemDto? _numistaSelected;
+    public ObservableCollection<NumistaItemDto> NumistaResults { get; } = new();
+    public NumistaItemDto? NumistaSelected
+    {
+        get => _numistaSelected;
+        set => SetProperty(ref _numistaSelected, value);
+    }
+
     private async Task NumistaSearchAsync()
     {
         IsBusy = true;
         try
         {
             var resp = await _backend.NumistaSearchAsync(new NumistaSearchRequest(NumistaQuery, 20));
-            Status = resp is { error: not null } ? resp.error : $"{resp?.items.Count ?? 0} items";
+            NumistaResults.Clear();
+            if (resp is { error: not null })
+            {
+                Status = resp.error;
+                return;
+            }
+            foreach (var item in resp?.items ?? new List<NumistaItemDto>())
+                NumistaResults.Add(item);
+            Status = $"{NumistaResults.Count} items";
         }
         finally
         {
             IsBusy = false;
         }
+    }
+
+    /// <summary>Validate the manually entered Numista link and fetch its title.</summary>
+    private async Task ValidateNumistaAsync()
+    {
+        if (string.IsNullOrWhiteSpace(NumistaLink))
+        {
+            Status = T("status.error");
+            return;
+        }
+        IsBusy = true;
+        try
+        {
+            var resp = await _backend.ParseNumistaLinkAsync(NumistaLink, fetchMeta: true);
+            if (resp is null)
+            {
+                Status = T("status.error");
+                return;
+            }
+            TypeEditor.NumistaUrl = NumistaLink;
+            if (!string.IsNullOrEmpty(resp.title) && string.IsNullOrWhiteSpace(TypeEditor.Name))
+                TypeEditor.Name = resp.title;
+            Status = $"N#{resp.numista_id} {resp.kind} — {resp.title ?? "?"}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>Apply the selected search result to the current coin / type card.</summary>
+    private void ApplyNumistaItem()
+    {
+        if (NumistaSelected is null)
+        {
+            Status = T("status.error");
+            return;
+        }
+        NumistaLink = NumistaSelected.url ?? NumistaLink;
+        TypeEditor.NumistaUrl = NumistaSelected.url;
+        if (string.IsNullOrWhiteSpace(TypeEditor.Name) && !string.IsNullOrEmpty(NumistaSelected.title))
+            TypeEditor.Name = NumistaSelected.title;
+        if (_currentCoinId is int cid)
+        {
+            var c = _db.GetCoin(cid);
+            if (c is not null)
+            {
+                c.NumistaUrl = NumistaSelected.url;
+                _db.SaveCoin(c);
+            }
+        }
+        Status = T("status.saved");
+    }
+
+    // ==================== references & attributes ====================
+    private async Task LoadReferencesAsync()
+    {
+        try
+        {
+            var refs = await _backend.ReferencesAsync();
+            if (refs is null) return;
+            foreach (var r in refs.items)
+            {
+                if (r.kind == "quality")
+                    QualityItems.Add(string.IsNullOrEmpty(r.ru) ? r.code : r.ru);
+                else if (r.kind == "orientation")
+                    OrientationItems.Add(string.IsNullOrEmpty(r.ru) ? r.code : r.ru);
+            }
+        }
+        catch
+        {
+            // backend offline: dropdowns stay empty
+        }
+    }
+
+    private void ApplyCoinAttributes(int coinId)
+    {
+        var c = _db.GetCoin(coinId);
+        if (c is null) return;
+        MintYear = c.MintYear ?? "";
+        Mint = c.Mint ?? "";
+        Quality = c.Quality ?? "";
+        AnomalyDesc = c.AnomalyDesc ?? "";
+        NumistaLink = c.NumistaUrl ?? NumistaLink;
+        _currentCoinId = coinId;
+        LoadAnnotationLayer();
+    }
+
+    private async Task SaveAttributesAsync()
+    {
+        if (_currentCoinId is not int cid)
+        {
+            Status = T("status.error");
+            return;
+        }
+        var c = _db.GetCoin(cid) ?? new Coin { Id = cid };
+        c.MintYear = string.IsNullOrWhiteSpace(MintYear) ? null : MintYear;
+        c.Mint = string.IsNullOrWhiteSpace(Mint) ? null : Mint;
+        c.Quality = string.IsNullOrWhiteSpace(Quality) ? null : Quality;
+        c.AnomalyDesc = string.IsNullOrWhiteSpace(AnomalyDesc) ? null : AnomalyDesc;
+        c.NumistaUrl = string.IsNullOrWhiteSpace(NumistaLink) ? null : NumistaLink;
+        _db.SaveCoin(c);
+        Status = T("status.saved");
+    }
+
+    // ==================== anomaly ====================
+    private async Task RunAnomalyAsync()
+    {
+        string? path = _obversePath ?? _reversePath;
+        if (path is null)
+        {
+            Status = T("status.error");
+            return;
+        }
+        CoinSide side = _obversePath != null ? CoinSide.Obverse : CoinSide.Reverse;
+        var refs = new List<int>();
+        if (_currentCoinId is int eid)
+            refs.Add(eid); // etalon as the normal reference
+        IsBusy = true;
+        try
+        {
+            var resp = await _backend.AnomalyAsync(new AnomalyRequest(
+                crop_path: path,
+                side: side == CoinSide.Obverse ? "obverse" : "reverse",
+                reference_ids: refs,
+                heatmap_size: 128,
+                threshold: null,
+                coin_id: _currentCoinId));
+            if (resp is null)
+            {
+                AnomalyStatus = T("status.error");
+                return;
+            }
+            AnomalyScore = resp.score;
+            IsAnomaly = resp.is_anomaly;
+            AnomalyStatus = resp.is_anomaly
+                ? $"{T("anomaly.detected")} ({resp.score:F2})"
+                : $"{T("anomaly.ok")} ({resp.score:F2})";
+            HeatmapImage = File.Exists(resp.heatmap_path!) ? LoadImage(resp.heatmap_path) : null;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    // ==================== annotation layer ====================
+    private void UndoAnnotation()
+    {
+        if (AnnotationItems.Count > 0)
+            AnnotationItems.RemoveAt(AnnotationItems.Count - 1);
+    }
+
+    private void ClearAnnotations()
+    {
+        AnnotationItems.Clear();
+    }
+
+    private async Task SaveAnnotationsAsync()
+    {
+        if (_currentCoinId is not int cid)
+        {
+            Status = T("status.error");
+            return;
+        }
+        string side = _obversePath != null ? "obverse" : "reverse";
+        var path = AnnotationLayer.Save(cid, side, AnnotationItems.ToList(), _settings.CoimgDir);
+        var c = _db.GetCoin(cid);
+        if (c != null)
+        {
+            if (side == "obverse") c.ObverseLayer = path;
+            else c.ReverseLayer = path;
+            _db.SaveCoin(c);
+        }
+        Status = T("status.saved");
+    }
+
+    /// <summary>Load the saved annotation layer for the current coin (matching side).</summary>
+    private void LoadAnnotationLayer()
+    {
+        AnnotationItems.Clear();
+        if (_currentCoinId is not int cid) return;
+        var c = _db.GetCoin(cid);
+        if (c is null) return;
+        string side = _obversePath != null ? "obverse" : "reverse";
+        var path = side == "obverse" ? c.ObverseLayer : c.ReverseLayer;
+        if (string.IsNullOrEmpty(path) || !File.Exists(path)) return;
+        var layer = AnnotationLayer.Load(path);
+        foreach (var item in layer.Items)
+            AnnotationItems.Add(item);
+    }
+
+    // ==================== type card ====================
+    private async Task LoadTypeAsync()
+    {
+        if (_currentCoinId is not int cid)
+        {
+            TypeEditor.Clear();
+            return;
+        }
+        var c = _db.GetCoin(cid);
+        var typeId = c?.TypeId;
+        if (typeId is null)
+        {
+            // try the etalon's type
+            typeId = c?.EtalonId is int eid ? _db.GetCoin(eid)?.TypeId : null;
+        }
+        var t = typeId is int tid ? _db.GetCoinType(tid) : null;
+        TypeEditor.LoadFrom(t);
+    }
+
+    private async Task SaveTypeAsync()
+    {
+        if (string.IsNullOrWhiteSpace(TypeEditor.Name) && TypeEditor.Id == 0)
+        {
+            Status = T("status.error");
+            return;
+        }
+        var id = _db.SaveCoinType(TypeEditor.ToCoinType());
+        if (_currentCoinId is int cid)
+        {
+            var c = _db.GetCoin(cid) ?? new Coin { Id = cid };
+            c.TypeId = id;
+            _db.SaveCoin(c);
+        }
+        TypeEditor.Id = id;
+        Status = T("status.saved");
     }
 
     // ==================== helpers ====================

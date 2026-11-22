@@ -58,12 +58,30 @@ public record SearchResponse(
     List<CandidateDto> candidates,
     Dictionary<string, SideDto> sides);
 
+public record EmbedRequest(
+    int coin_id,
+    string? obverse_path,
+    string? reverse_path);
+
+public record EmbedSideResult(
+    string side,
+    string? photo_path,
+    string? vector_path,
+    int? dim);
+
+public record EmbedResponse(
+    bool ok,
+    int coin_id,
+    List<EmbedSideResult> sides,
+    string? error);
+
 public record AnomalyRequest(
     string crop_path,
     string side,
     List<int> reference_ids,
     int heatmap_size,
-    double? threshold);
+    double? threshold,
+    int? coin_id);
 
 public record BoundingBoxDto(double x, double y, double w, double h);
 
@@ -78,6 +96,17 @@ public record AnomalyResponse(
     List<BoundingBoxDto> bounding_boxes,
     List<TopPatchDto> top_patches,
     string? error);
+
+public record ReferenceItemDto(string kind, string? code, string? ru, string? en);
+
+public record ReferencesResponse(List<ReferenceItemDto> items);
+
+public record NumistaParseResponse(
+    int? numista_id,
+    string? kind,
+    string? url,
+    string? title,
+    string? source);
 
 public record NumistaSearchRequest(string query, int limit);
 
