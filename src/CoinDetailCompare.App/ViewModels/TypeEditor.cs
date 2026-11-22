@@ -26,7 +26,7 @@ public class TypeEditor : ObservableObject
     private string? _reverseText;
     private string? _rimText;
 
-    public int Id { get => _id; private set => SetProperty(ref _id, value); }
+    public int Id { get => _id; set => SetProperty(ref _id, value); }
     public string? NumistaUrl { get => _numistaUrl; set => SetProperty(ref _numistaUrl, value); }
     public string? Name { get => _name; set => SetProperty(ref _name, value); }
     public string? Issuer { get => _issuer; set => SetProperty(ref _issuer, value); }

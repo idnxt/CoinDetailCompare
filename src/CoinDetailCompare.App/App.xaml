@@ -4,6 +4,7 @@
              xmlns:conv="clr-namespace:CoinDetailCompare.App.Converters">
     <Application.Resources>
         <conv:InverseBoolConverter x:Key="InverseBool" />
+        <conv:PercentConverter x:Key="Pct" />
         <Style x:Key="Card" TargetType="Border">
             <Setter Property="Background" Value="#FFF5F6F8" />
             <Setter Property="BorderBrush" Value="#FFDDDDDD" />

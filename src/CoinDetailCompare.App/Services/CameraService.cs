@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows.Media.Imaging;
 using OpenCvSharp;
 
@@ -19,7 +20,7 @@ public interface ICameraDevice : IDisposable
 /// </summary>
 public class OpenCvCameraDevice : ICameraDevice
 {
-    private readonly long _deviceIndex;
+    private readonly int _deviceIndex;
     private VideoCapture? _capture;
 
     public string? Description { get; private set; }
@@ -38,7 +39,7 @@ public class OpenCvCameraDevice : ICameraDevice
         for (int i = 0; i < maxIndex; i++)
         {
             using var cap = new VideoCapture(i);
-            if (cap.IsOpened)
+            if (cap.IsOpened())
             {
                 if (cap.Read(new Mat()))
                     return i;
@@ -52,7 +53,7 @@ public class OpenCvCameraDevice : ICameraDevice
         if (IsOpen)
             return true;
         _capture = new VideoCapture(_deviceIndex);
-        if (!_capture.IsOpened)
+        if (!_capture.IsOpened())
         {
             _capture.Dispose();
             _capture = null;
@@ -68,7 +69,7 @@ public class OpenCvCameraDevice : ICameraDevice
     public bool TryGetFrame(out BitmapSource? frame)
     {
         frame = null;
-        if (_capture is not { IsOpened: true })
+        if (_capture is null || !_capture.IsOpened())
             return false;
 
         using var mat = new Mat();
@@ -76,12 +77,11 @@ public class OpenCvCameraDevice : ICameraDevice
             return false;
 
         // Encode as PNG bytes and decode into a WPF BitmapSource.
-        using var ms = new MemoryStream();
-        Cv2.ImEncode(".png", mat, ms);
+        Cv2.ImEncode(".png", mat, out var buf);
         var bmp = new BitmapImage();
         bmp.BeginInit();
         bmp.CacheOption = BitmapCacheOption.OnLoad;
-        bmp.StreamSource = new MemoryStream(ms.ToArray());
+        bmp.StreamSource = new MemoryStream(buf);
         bmp.EndInit();
         bmp.Freeze(); // safe across threads
         frame = bmp;

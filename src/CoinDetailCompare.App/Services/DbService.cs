@@ -107,30 +107,30 @@ public class DbService
         if (!r.Read()) return null;
         return new CoinType
         {
-            Id = r.GetInt32("id"),
-            NumistaN = r.IsDBNull("numista_n") ? null : r.GetString("numista_n"),
-            NumistaUrl = r.IsDBNull("numista_url") ? null : r.GetString("numista_url"),
-            Name = r.IsDBNull("name") ? null : r.GetString("name"),
-            Issuer = r.IsDBNull("issuer") ? null : r.GetString("issuer"),
-            Period = r.IsDBNull("period") ? null : r.GetString("period"),
-            Type = r.IsDBNull("type") ? null : r.GetString("type"),
-            Years = r.IsDBNull("years") ? null : r.GetString("years"),
-            Calendar = r.IsDBNull("calendar") ? null : r.GetString("calendar"),
-            Value = r.IsDBNull("value") ? null : r.GetString("value"),
-            Rate = r.IsDBNull("rate") ? null : r.GetString("rate"),
-            Currency = r.IsDBNull("currency") ? null : r.GetString("currency"),
-            Composition = r.IsDBNull("composition") ? null : r.GetString("composition"),
-            Mass = r.IsDBNull("mass") ? null : r.GetString("mass"),
-            Diameter = r.IsDBNull("diameter") ? null : r.GetString("diameter"),
-            Thickness = r.IsDBNull("thickness") ? null : r.GetString("thickness"),
-            Shape = r.IsDBNull("shape") ? null : r.GetString("shape"),
-            Technique = r.IsDBNull("technique") ? null : r.GetString("technique"),
-            Orientation = r.IsDBNull("orientation") ? null : r.GetString("orientation"),
-            IssuedDate = r.IsDBNull("issued_date") ? null : r.GetString("issued_date"),
-            Links = r.IsDBNull("links") ? null : r.GetString("links"),
-            ObverseText = r.IsDBNull("obverse_text") ? null : r.GetString("obverse_text"),
-            ReverseText = r.IsDBNull("reverse_text") ? null : r.GetString("reverse_text"),
-            RimText = r.IsDBNull("rim_text") ? null : r.GetString("rim_text"),
+            Id = r.GetInt32(r.GetOrdinal("id")),
+            NumistaN = S(r, "numista_n"),
+            NumistaUrl = S(r, "numista_url"),
+            Name = S(r, "name"),
+            Issuer = S(r, "issuer"),
+            Period = S(r, "period"),
+            Type = S(r, "type"),
+            Years = S(r, "years"),
+            Calendar = S(r, "calendar"),
+            Value = S(r, "value"),
+            Rate = S(r, "rate"),
+            Currency = S(r, "currency"),
+            Composition = S(r, "composition"),
+            Mass = S(r, "mass"),
+            Diameter = S(r, "diameter"),
+            Thickness = S(r, "thickness"),
+            Shape = S(r, "shape"),
+            Technique = S(r, "technique"),
+            Orientation = S(r, "orientation"),
+            IssuedDate = S(r, "issued_date"),
+            Links = S(r, "links"),
+            ObverseText = S(r, "obverse_text"),
+            ReverseText = S(r, "reverse_text"),
+            RimText = S(r, "rim_text"),
         };
     }
 
@@ -213,28 +213,47 @@ public class DbService
     {
         return new Coin
         {
-            Id = r.GetInt32("id"),
-            TypeId = r.IsDBNull("type_id") ? null : r.GetInt32("type_id"),
-            MintYear = r.IsDBNull("mint_year") ? null : r.GetString("mint_year"),
-            Mint = r.IsDBNull("mint") ? null : r.GetString("mint"),
-            Quality = r.IsDBNull("quality") ? null : r.GetString("quality"),
-            Price = r.IsDBNull("price") ? 0 : r.GetDouble("price"),
-            AlbumName = r.IsDBNull("album_name") ? null : r.GetString("album_name"),
-            PageNo = r.IsDBNull("page_no") ? null : r.GetInt32("page_no"),
-            OrderNo = r.IsDBNull("order_no") ? null : r.GetInt32("order_no"),
-            ObversePhoto = r.IsDBNull("obverse_photo") ? null : r.GetString("obverse_photo"),
-            ReversePhoto = r.IsDBNull("reverse_photo") ? null : r.GetString("reverse_photo"),
-            ObverseHeatmap = r.IsDBNull("obverse_heatmap") ? null : r.GetString("obverse_heatmap"),
-            ReverseHeatmap = r.IsDBNull("reverse_heatmap") ? null : r.GetString("reverse_heatmap"),
-            ObverseLayer = r.IsDBNull("obverse_layer") ? null : r.GetString("obverse_layer"),
-            ReverseLayer = r.IsDBNull("reverse_layer") ? null : r.GetString("reverse_layer"),
-            ObverseVector = r.IsDBNull("obverse_vector") ? null : r.GetString("obverse_vector"),
-            ReverseVector = r.IsDBNull("reverse_vector") ? null : r.GetString("reverse_vector"),
-            IsAnomaly = r.GetInt32("is_anomaly") == 1,
-            AnomalyDesc = r.IsDBNull("anomaly_desc") ? null : r.GetString("anomaly_desc"),
-            NumistaUrl = r.IsDBNull("numista_url") ? null : r.GetString("numista_url"),
-            SourceKind = Enum.Parse<SourceKind>(r.GetString("source_kind"), ignoreCase: true),
-            EtalonId = r.IsDBNull("etalon_id") ? null : r.GetInt32("etalon_id"),
+            Id = r.GetInt32(r.GetOrdinal("id")),
+            TypeId = I(r, "type_id"),
+            MintYear = S(r, "mint_year"),
+            Mint = S(r, "mint"),
+            Quality = S(r, "quality"),
+            Price = D(r, "price"),
+            AlbumName = S(r, "album_name"),
+            PageNo = I(r, "page_no"),
+            OrderNo = I(r, "order_no"),
+            ObversePhoto = S(r, "obverse_photo"),
+            ReversePhoto = S(r, "reverse_photo"),
+            ObverseHeatmap = S(r, "obverse_heatmap"),
+            ReverseHeatmap = S(r, "reverse_heatmap"),
+            ObverseLayer = S(r, "obverse_layer"),
+            ReverseLayer = S(r, "reverse_layer"),
+            ObverseVector = S(r, "obverse_vector"),
+            ReverseVector = S(r, "reverse_vector"),
+            IsAnomaly = r.GetInt32(r.GetOrdinal("is_anomaly")) == 1,
+            AnomalyDesc = S(r, "anomaly_desc"),
+            NumistaUrl = S(r, "numista_url"),
+            SourceKind = Enum.Parse<SourceKind>(r.GetString(r.GetOrdinal("source_kind")), ignoreCase: true),
+            EtalonId = I(r, "etalon_id"),
         };
+    }
+
+    // Reader helpers: resolve column name to ordinal once, then use int overloads only.
+    private static string? S(SqliteDataReader r, string col)
+    {
+        var o = r.GetOrdinal(col);
+        return r.IsDBNull(o) ? null : r.GetString(o);
+    }
+
+    private static int? I(SqliteDataReader r, string col)
+    {
+        var o = r.GetOrdinal(col);
+        return r.IsDBNull(o) ? null : r.GetInt32(o);
+    }
+
+    private static double D(SqliteDataReader r, string col)
+    {
+        var o = r.GetOrdinal(col);
+        return r.IsDBNull(o) ? 0 : r.GetDouble(o);
     }
 }

@@ -16,28 +16,76 @@ public class AnnotationCanvas : FrameworkElement
 {
     private readonly Pen _pen = new() { Thickness = 2 };
     private AnnotationItem? _draft;
-    private AnnotationTool _tool = AnnotationTool.Path;
-    private string _color = "#FFFF3030";
+    private ObservableCollection<AnnotationItem> _items;
 
     public AnnotationCanvas()
     {
         Focusable = true;
+        _items = new ObservableCollection<AnnotationItem>();
+        _items.CollectionChanged += OnItemsCollectionChanged;
     }
 
-    /// <summary>Items to render + edit.</summary>
-    public ObservableCollection<AnnotationItem> Items { get; } = new();
+    /// <summary>Items to render + edit. XAML may bind this to a view-model collection.</summary>
+    public static readonly DependencyProperty ItemsProperty =
+        DependencyProperty.Register(nameof(Items), typeof(ObservableCollection<AnnotationItem>), typeof(AnnotationCanvas),
+            new PropertyMetadata(OnItemsChanged));
+
+    public static readonly DependencyProperty ToolProperty =
+        DependencyProperty.Register(nameof(Tool), typeof(AnnotationTool), typeof(AnnotationCanvas),
+            new PropertyMetadata(AnnotationTool.Path, OnInvalidate));
+
+    public static readonly DependencyProperty ColorProperty =
+        DependencyProperty.Register(nameof(Color), typeof(string), typeof(AnnotationCanvas),
+            new PropertyMetadata("#FFFF3030", OnColorChanged));
+
+    public ObservableCollection<AnnotationItem> Items
+    {
+        get => GetValue(ItemsProperty) as ObservableCollection<AnnotationItem> ?? _items;
+        set => SetValue(ItemsProperty, value);
+    }
 
     public AnnotationTool Tool
     {
-        get => _tool;
-        set { _tool = value; InvalidateVisual(); }
+        get => (AnnotationTool)GetValue(ToolProperty);
+        set => SetValue(ToolProperty, value);
     }
 
     public string Color
     {
-        get => _color;
-        set { _color = value; _pen.Brush = Parse(value); InvalidateVisual(); }
+        get => (string)GetValue(ColorProperty) ?? string.Empty;
+        set => SetValue(ColorProperty, value);
     }
+
+    private static void OnInvalidate(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        => ((AnnotationCanvas)d).InvalidateVisual();
+
+    private static void OnColorChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        var c = (AnnotationCanvas)d;
+        if (e.NewValue is string s && !string.IsNullOrEmpty(s))
+            c._pen.Brush = Parse(s);
+        c.InvalidateVisual();
+    }
+
+    private static void OnItemsChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        var c = (AnnotationCanvas)d;
+        if (ReferenceEquals(e.OldValue, c._items) && e.OldValue is ObservableCollection<AnnotationItem> oldColl)
+        {
+            oldColl.CollectionChanged -= c.OnItemsCollectionChanged;
+            c._items = new ObservableCollection<AnnotationItem>();
+            c._items.CollectionChanged += c.OnItemsCollectionChanged;
+        }
+        if (e.NewValue is ObservableCollection<AnnotationItem> newColl)
+        {
+            c._items = newColl;
+            newColl.CollectionChanged += c.OnItemsCollectionChanged;
+        }
+        c.InvalidateVisual();
+    }
+
+    private void OnItemsCollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+        => InvalidateVisual();
 
     /// <summary>Raised when the user finishes a shape (before it is committed to Items).</summary>
     public event Action<AnnotationItem>? ShapeFinished;
@@ -61,7 +109,7 @@ public class AnnotationCanvas : FrameworkElement
 
     private static Brush Parse(string hex)
     {
-        var c = (Color)ColorConverter.ConvertFromString(hex) ?? Colors.Red;
+        var c = ColorConverter.ConvertFromString(hex) is Color cc ? cc : Colors.Red;
         return new SolidColorBrush(c);
     }
 
@@ -104,14 +152,17 @@ public class AnnotationCanvas : FrameworkElement
             const double len = 14, spread = 0.4;
             var p1 = new Point(b.X - len * Math.Cos(angle - spread), b.Y - len * Math.Sin(angle - spread));
             var p2 = new Point(b.X - len * Math.Cos(angle + spread), b.Y - len * Math.Sin(angle + spread));
-            var head = new PointCollection { p1, b, p2 };
+            var fig = new PathFigure { StartPoint = p1 };
+            fig.Segments.Add(new LineSegment(b, true));
+            fig.Segments.Add(new LineSegment(p2, true));
+            var head = new PathGeometry(new[] { fig });
             dc.DrawGeometry(null, _pen, head);
             return;
         }
 
         // path: polyline
-        if (pts.Count >= 2)
-            dc.DrawLines(_pen, pts);
+        for (int i = 0; i + 1 < pts.Count; i++)
+            dc.DrawLine(_pen, pts[i], pts[i + 1]);
     }
 
     private Point Norm(Point p) => new(p.X / ActualWidth, p.Y / ActualHeight);
@@ -122,8 +173,8 @@ public class AnnotationCanvas : FrameworkElement
         Focus();
         var p = Norm(e.GetPosition(this));
         ShapeStarted?.Invoke();
-        _draft = new AnnotationItem { Color = _color, ZOrder = Items.Count };
-        _draft.Shape = _tool switch
+        _draft = new AnnotationItem { Color = Color, ZOrder = Items.Count };
+        _draft.Shape = Tool switch
         {
             AnnotationTool.Ellipse => "ellipse",
             AnnotationTool.Arrow => "arrow",
@@ -139,7 +190,7 @@ public class AnnotationCanvas : FrameworkElement
         base.OnMouseMove(e);
         if (_draft == null) return;
         var p = Norm(e.GetPosition(this));
-        switch (_tool)
+        switch (Tool)
         {
             case AnnotationTool.Path:
                 _draft.Points.Add((float)p.X);

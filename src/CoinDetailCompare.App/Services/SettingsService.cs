@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using CoinDetailCompare.App.Models;
 
 namespace CoinDetailCompare.App.Services;
@@ -49,14 +50,22 @@ public class SettingsService
             return new AppSettings();
         var json = File.ReadAllText(path);
         return JsonSerializer.Deserialize<AppSettings>(json,
-                   new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                   new JsonSerializerOptions
+                   {
+                       PropertyNameCaseInsensitive = true,
+                       Converters = { new JsonStringEnumConverter() },
+                   })
                ?? new AppSettings();
     }
 
     public void Save()
     {
         var json = JsonSerializer.Serialize(Current,
-            new JsonSerializerOptions { WriteIndented = true });
+            new JsonSerializerOptions
+            {
+                WriteIndented = true,
+                Converters = { new JsonStringEnumConverter() },
+            });
         File.WriteAllText(AppSettingsPath, json);
     }
 }

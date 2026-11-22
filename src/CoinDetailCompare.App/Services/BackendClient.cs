@@ -23,19 +23,19 @@ public class BackendClient
         => _http.GetFromJsonAsync<HealthDto>("/health", Opts);
 
     public async Task<PreprocessResponse?> PreprocessAsync(PreprocessRequest req)
-        => await ContinueAsync(_http.PostAsJsonAsync("/preprocess", req, Opts));
+        => await ContinueAsync<PreprocessResponse>(_http.PostAsJsonAsync("/preprocess", req, Opts));
 
     public async Task<SearchResponse?> SearchAsync(SearchRequest req)
-        => await ContinueAsync(_http.PostAsJsonAsync("/search", req, Opts));
+        => await ContinueAsync<SearchResponse>(_http.PostAsJsonAsync("/search", req, Opts));
 
     public async Task<EmbedResponse?> EmbedAsync(EmbedRequest req)
-        => await ContinueAsync(_http.PostAsJsonAsync("/embed", req, Opts));
+        => await ContinueAsync<EmbedResponse>(_http.PostAsJsonAsync("/embed", req, Opts));
 
     public async Task<AnomalyResponse?> AnomalyAsync(AnomalyRequest req)
-        => await ContinueAsync(_http.PostAsJsonAsync("/anomaly", req, Opts));
+        => await ContinueAsync<AnomalyResponse>(_http.PostAsJsonAsync("/anomaly", req, Opts));
 
     public async Task<NumistaSearchResponse?> NumistaSearchAsync(NumistaSearchRequest req)
-        => await ContinueAsync(_http.PostAsJsonAsync("/numista/search", req, Opts));
+        => await ContinueAsync<NumistaSearchResponse>(_http.PostAsJsonAsync("/numista/search", req, Opts));
 
     public async Task<ReferencesResponse?> ReferencesAsync(string? kind = null)
     {
@@ -44,16 +44,16 @@ public class BackendClient
     }
 
     public async Task<Dictionary<string, int>?> RebuildIndexAsync()
-        => await ContinueAsync(_http.PostAsync("/index/rebuild", null, Opts));
+        => await ContinueAsync<Dictionary<string, int>>(_http.PostAsync("/index/rebuild", null));
 
     public async Task<NumistaParseResponse?> ParseNumistaLinkAsync(string link, bool fetchMeta = false)
-        => await ContinueAsync(_http.PostAsJsonAsync("/numista/parse", new { link, fetch_meta = fetchMeta }, Opts));
+        => await ContinueAsync<NumistaParseResponse>(_http.PostAsJsonAsync("/numista/parse", new { link, fetch_meta = fetchMeta }, Opts));
 
     private static async Task<T?> ContinueAsync<T>(Task<HttpResponseMessage> task)
     {
         var resp = await task;
         if (!resp.IsSuccessStatusCode)
-            return null;
+            return default;
         return await resp.Content.ReadFromJsonAsync<T>(Opts);
     }
 

@@ -10,7 +10,7 @@
         <Border DockPanel.Dock="Bottom" Background="#FF2B2E33" Padding="10,6">
             <DockPanel>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                    <TextBlock Text="{Binding ['status.language'], Source={StaticResource Strings}}"
+                    <TextBlock Text="{Binding StatusLanguage, Source={StaticResource Strings}}"
                                Foreground="#FFF0F0F0" VerticalAlignment="Center" Margin="0,0,6,0" />
                     <ComboBox Width="60" VerticalAlignment="Center"
                               ItemsSource="{Binding Languages}"
@@ -30,9 +30,9 @@
             <!-- ===== Left: Capture ===== -->
             <Border Grid.Column="0" Style="{StaticResource Card}" Margin="0,0,8,0">
                 <StackPanel>
-                    <TextBlock Style="{StaticResource Title}" Text="{Binding ['capture.section'], Source={StaticResource Strings}}" />
+                    <TextBlock Style="{StaticResource Title}" Text="{Binding CaptureSection, Source={StaticResource Strings}}" />
 
-                    <TextBlock Text="{Binding ['capture.album'], Source={StaticResource Strings}}" Margin="0,6,0,2" />
+                    <TextBlock Text="{Binding CaptureAlbum, Source={StaticResource Strings}}" Margin="0,6,0,2" />
                     <TextBox Text="{Binding Album, UpdateSourceTrigger=PropertyChanged}" />
                     <Grid Margin="0,6,0,0">
                         <Grid.ColumnDefinitions>
@@ -41,34 +41,34 @@
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
                         <StackPanel Grid.Column="0" Margin="0,0,6,0">
-                            <TextBlock Text="{Binding ['capture.page'], Source={StaticResource Strings}}" />
+                            <TextBlock Text="{Binding CapturePage, Source={StaticResource Strings}}" />
                             <TextBox Text="{Binding PageNo}" />
                         </StackPanel>
                         <StackPanel Grid.Column="1" Margin="0,0,6,0">
-                            <TextBlock Text="{Binding ['capture.order'], Source={StaticResource Strings}}" />
+                            <TextBlock Text="{Binding CaptureOrder, Source={StaticResource Strings}}" />
                             <TextBox Text="{Binding OrderNo}" />
                         </StackPanel>
                         <StackPanel Grid.Column="2">
-                            <TextBlock Text="{Binding ['capture.rotation'], Source={StaticResource Strings}}" />
+                            <TextBlock Text="{Binding CaptureRotation, Source={StaticResource Strings}}" />
                             <TextBox Text="{Binding Rotation}" />
                         </StackPanel>
                     </Grid>
 
                     <Separator Margin="0,10" />
-                    <Button Style="{StaticResource Btn}" Content="{Binding ['capture.shoot_obverse'], Source={StaticResource Strings}}"
+                    <Button Style="{StaticResource Btn}" Content="{Binding CaptureShootObverse, Source={StaticResource Strings}}"
                             Command="{Binding ShootObverseCommand}" />
-                    <Button Style="{StaticResource Btn}" Content="{Binding ['capture.shoot_reverse'], Source={StaticResource Strings}}"
+                    <Button Style="{StaticResource Btn}" Content="{Binding CaptureShootReverse, Source={StaticResource Strings}}"
                             Command="{Binding ShootReverseCommand}" />
-                    <Button Style="{StaticResource Btn}" Content="{Binding ['capture.load_obverse'], Source={StaticResource Strings}}"
+                    <Button Style="{StaticResource Btn}" Content="{Binding CaptureLoadObverse, Source={StaticResource Strings}}"
                             Command="{Binding LoadObverseFileCommand}" />
-                    <Button Style="{StaticResource Btn}" Content="{Binding ['capture.load_reverse'], Source={StaticResource Strings}}"
+                    <Button Style="{StaticResource Btn}" Content="{Binding CaptureLoadReverse, Source={StaticResource Strings}}"
                             Command="{Binding LoadReverseFileCommand}" />
-                    <Button Style="{StaticResource Btn}" Content="{Binding ['capture.swap_sides'], Source={StaticResource Strings}}"
+                    <Button Style="{StaticResource Btn}" Content="{Binding CaptureSwapSides, Source={StaticResource Strings}}"
                             Command="{Binding SwapSidesCommand}" />
 
                     <Separator Margin="0,10" />
-                    <TextBlock Style="{StaticResource Title}" Text="{Binding ['capture.batch_mode'], Source={StaticResource Strings}}" />
-                    <TextBlock Text="{Binding ['capture.album'], Source={StaticResource Strings}}" Margin="0,4,0,2" />
+                    <TextBlock Style="{StaticResource Title}" Text="{Binding CaptureBatchMode, Source={StaticResource Strings}}" />
+                    <TextBlock Text="{Binding CaptureAlbum, Source={StaticResource Strings}}" Margin="0,4,0,2" />
                     <TextBox Text="{Binding BatchAlbum, UpdateSourceTrigger=PropertyChanged}" />
                     <Grid Margin="0,4,0,0">
                         <Grid.ColumnDefinitions>
@@ -76,31 +76,31 @@
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
                         <StackPanel Grid.Column="0" Margin="0,0,6,0">
-                            <TextBlock Text="{Binding ['capture.page'], Source={StaticResource Strings}}" />
+                            <TextBlock Text="{Binding CapturePage, Source={StaticResource Strings}}" />
                             <TextBox Text="{Binding BatchPage}" />
                         </StackPanel>
                         <StackPanel Grid.Column="1">
-                            <TextBlock Text="{Binding ['capture.batch_coins'], Source={StaticResource Strings}}" />
+                            <TextBlock Text="{Binding CaptureBatchCoins, Source={StaticResource Strings}}" />
                             <TextBox Text="{Binding BatchCount}" />
                         </StackPanel>
                     </Grid>
-                    <Button Style="{StaticResource Btn}" Content="{Binding ['capture.open_camera'], Source={StaticResource Strings}}"
+                    <Button Style="{StaticResource Btn}" Content="{Binding CaptureOpenCamera, Source={StaticResource Strings}}"
                             Command="{Binding OpenCameraCommand}" />
-                    <Button Style="{StaticResource Btn}" Content="{Binding ['capture.start_batch'], Source={StaticResource Strings}}"
+                    <Button Style="{StaticResource Btn}" Content="{Binding CaptureStartBatch, Source={StaticResource Strings}}"
                             Command="{Binding StartBatchCommand}"
                             IsEnabled="{Binding BatchActive, Converter={StaticResource InverseBool}}" />
-                    <Button Style="{StaticResource Btn}" Content="{Binding ['capture.capture_frame'], Source={StaticResource Strings}}"
+                    <Button Style="{StaticResource Btn}" Content="{Binding CaptureCaptureFrame, Source={StaticResource Strings}}"
                             Command="{Binding CaptureNextCommand}"
                             IsEnabled="{Binding BatchActive}" />
-                    <Button Style="{StaticResource Btn}" Content="{Binding ['capture.cancel_batch'], Source={StaticResource Strings}}"
+                    <Button Style="{StaticResource Btn}" Content="{Binding CaptureCancelBatch, Source={StaticResource Strings}}"
                             Command="{Binding CancelBatchCommand}"
                             IsEnabled="{Binding BatchActive}" />
-                    <Button Style="{StaticResource Btn}" Content="{Binding ['capture.save_all'], Source={StaticResource Strings}}"
+                    <Button Style="{StaticResource Btn}" Content="{Binding CaptureSaveAll, Source={StaticResource Strings}}"
                             Command="{Binding SaveBatchCommand}"
                             Visibility="Collapsed" />
                     <TextBlock Text="{Binding BatchStatus}" Margin="0,6,0,0" TextWrapping="Wrap" />
                     <ListView ItemsSource="{Binding BatchResults}" Height="140" Margin="0,6,0,0"
-                              SelectedItemStyle="{x:Null}">
+                              >
                         <ListView.ItemTemplate>
                             <DataTemplate>
                                 <Grid>
@@ -111,8 +111,8 @@
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" Text="{Binding OrderNo}" Margin="0,0,8,0" />
-                                    <TextBlock Grid.Column="1" Text="{Binding ObversePct, StringFormat={}{0:0.0}%" />
-                                    <TextBlock Grid.Column="2" Text="{Binding ReversePct, StringFormat={}{0:0.0}%" />
+                                    <TextBlock Grid.Column="1" Text="{Binding ObversePct, Converter={StaticResource Pct}}" />
+                                    <TextBlock Grid.Column="2" Text="{Binding ReversePct, Converter={StaticResource Pct}}" />
                                     <TextBlock Grid.Column="3" Text="{Binding Status}" Margin="8,0,0,0" />
                                 </Grid>
                             </DataTemplate>
@@ -120,12 +120,10 @@
                     </ListView>
 
                     <Separator Margin="0,10" />
-                    <TextBlock Text="{Binding ['capture.obverse'], Source={StaticResource Strings}}" FontWeight="SemiBold" Margin="0,0,0,2" />
-                    <Image Source="{Binding ObverseImage}" Height="180" Stretch="Uniform"
-                           Background="#FFEFEFEF" />
-                    <TextBlock Text="{Binding ['capture.reverse'], Source={StaticResource Strings}}" FontWeight="SemiBold" Margin="0,8,0,2" />
-                    <Image Source="{Binding ReverseImage}" Height="180" Stretch="Uniform"
-                           Background="#FFEFEFEF" />
+                    <TextBlock Text="{Binding CaptureObverse, Source={StaticResource Strings}}" FontWeight="SemiBold" Margin="0,0,0,2" />
+                    <Image Source="{Binding ObverseImage}" Height="180" Stretch="Uniform" />
+                    <TextBlock Text="{Binding CaptureReverse, Source={StaticResource Strings}}" FontWeight="SemiBold" Margin="0,8,0,2" />
+                    <Image Source="{Binding ReverseImage}" Height="180" Stretch="Uniform" />
                 </StackPanel>
             </Border>
 
@@ -138,7 +136,7 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <TextBlock Grid.Row="0" Style="{StaticResource Title}" Text="{Binding ['compare.section'], Source={StaticResource Strings}}" />
+                    <TextBlock Grid.Row="0" Style="{StaticResource Title}" Text="{Binding CompareSection, Source={StaticResource Strings}}" />
 
                     <Grid Grid.Row="1" Margin="0,8">
                         <Grid.ColumnDefinitions>
@@ -146,10 +144,9 @@
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
                         <StackPanel Grid.Column="0" Margin="0,0,8,0">
-                            <TextBlock Text="{Binding ['compare.current'], Source={StaticResource Strings}}" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding CompareCurrent, Source={StaticResource Strings}}" FontWeight="SemiBold" />
                             <Grid>
-                                <Image Source="{Binding ObverseImage}" Stretch="Uniform"
-                                       Background="#FFEFEFEF" />
+                                <Image Source="{Binding ObverseImage}" Stretch="Uniform" />
                                 <controls:AnnotationCanvas x:Name="AnnotationCanvas"
                                                          Items="{Binding AnnotationItems}"
                                                          Tool="{Binding AnnotationTool}"
@@ -159,9 +156,8 @@
                             </Grid>
                         </StackPanel>
                         <StackPanel Grid.Column="1" Margin="8,0,0,0">
-                            <TextBlock Text="{Binding ['compare.base'], Source={StaticResource Strings}}" FontWeight="SemiBold" />
-                            <Image Source="{Binding EtalonImage}" Stretch="Uniform"
-                                   Background="#FFEFEFEF" />
+                            <TextBlock Text="{Binding CompareBase, Source={StaticResource Strings}}" FontWeight="SemiBold" />
+                            <Image Source="{Binding EtalonImage}" Stretch="Uniform" />
                         </StackPanel>
                     </Grid>
 
@@ -173,17 +169,17 @@
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0" Margin="0,0,8,0">
-                                <TextBlock Text="{Binding ['capture.obverse'], Source={StaticResource Strings}}" />
-                                <TextBlock Text="{Binding ObversePct, StringFormat={}{0:0.0}%}"
+                                <TextBlock Text="{Binding CaptureObverse, Source={StaticResource Strings}}" />
+                                <TextBlock Text="{Binding ObversePct, Converter={StaticResource Pct}}"
                                            FontSize="22" FontWeight="Bold" />
                             </StackPanel>
                             <StackPanel Grid.Column="1" Margin="0,0,8,0">
-                                <TextBlock Text="{Binding ['capture.reverse'], Source={StaticResource Strings}}" />
-                                <TextBlock Text="{Binding ReversePct, StringFormat={}{0:0.0}%}"
+                                <TextBlock Text="{Binding CaptureReverse, Source={StaticResource Strings}}" />
+                                <TextBlock Text="{Binding ReversePct, Converter={StaticResource Pct}}"
                                            FontSize="22" FontWeight="Bold" />
                             </StackPanel>
                             <StackPanel Grid.Column="2">
-                                <TextBlock Text="{Binding ['compare.orientation'], Source={StaticResource Strings}}" />
+                                <TextBlock Text="{Binding CompareOrientation, Source={StaticResource Strings}}" />
                                 <TextBlock Text="{Binding Orientation}" FontSize="18" FontWeight="SemiBold" />
                             </StackPanel>
                         </Grid>
@@ -198,20 +194,20 @@
                             <ComboBox Grid.Column="0" Width="110" Margin="0,0,8,0"
                                       ItemsSource="{Binding AnnotationToolItems}"
                                       SelectedItem="{Binding AnnotationToolName}" />
-                            <Button Grid.Column="1" Style="{StaticResource Btn}" Content="{Binding ['annotation.undo'], Source={StaticResource Strings}}"
+                            <Button Grid.Column="1" Style="{StaticResource Btn}" Content="{Binding AnnotationUndo, Source={StaticResource Strings}}"
                                     Command="{Binding UndoAnnotationCommand}" Margin="0,0,8,0" />
-                            <Button Grid.Column="2" Style="{StaticResource Btn}" Content="{Binding ['annotation.clear'], Source={StaticResource Strings}}"
+                            <Button Grid.Column="2" Style="{StaticResource Btn}" Content="{Binding AnnotationClear, Source={StaticResource Strings}}"
                                     Command="{Binding ClearAnnotationsCommand}" Margin="0,0,8,0" />
-                            <Button Grid.Column="3" Style="{StaticResource Btn}" Content="{Binding ['annotation.save_layer'], Source={StaticResource Strings}}"
+                            <Button Grid.Column="3" Style="{StaticResource Btn}" Content="{Binding AnnotationSaveLayer, Source={StaticResource Strings}}"
                                     Command="{Binding SaveAnnotationsCommand}" />
                             <TextBlock Grid.Column="4" VerticalAlignment="Center" Margin="12,0,0,0"
-                                       Text="{Binding ['compare.annotation_hint'], Source={StaticResource Strings}}"
+                                       Text="{Binding CompareAnnotationHint, Source={StaticResource Strings}}"
                                        TextWrapping="Wrap" Foreground="#FF888888" />
                         </Grid>
-                        <Button Style="{StaticResource Btn}" Content="{Binding ['compare.search'], Source={StaticResource Strings}}"
+                        <Button Style="{StaticResource Btn}" Content="{Binding CompareSearch, Source={StaticResource Strings}}"
                                 Command="{Binding SearchCommand}" HorizontalAlignment="Left"
                                 IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}" />
-                        <Button Style="{StaticResource Btn}" Content="{Binding ['compare.rebuild'], Source={StaticResource Strings}}"
+                        <Button Style="{StaticResource Btn}" Content="{Binding CompareRebuild, Source={StaticResource Strings}}"
                                 Command="{Binding RebuildIndexCommand}" HorizontalAlignment="Left" />
                         <Grid Margin="0,8,0,0">
                             <Grid.ColumnDefinitions>
@@ -219,7 +215,7 @@
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <Button Grid.Column="0" Style="{StaticResource Btn}"
-                                    Content="{Binding ['anomaly.check'], Source={StaticResource Strings}}"
+                                    Content="{Binding AnomalyCheck, Source={StaticResource Strings}}"
                                     Command="{Binding RunAnomalyCommand}" Margin="0,0,12,0"
                                     IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}" />
                             <TextBlock Grid.Column="1" VerticalAlignment="Center"
@@ -233,28 +229,28 @@
             <Border Grid.Column="2" Style="{StaticResource Card}">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel>
-                        <TextBlock Style="{StaticResource Title}" Text="{Binding ['actions.section'], Source={StaticResource Strings}}" />
-                        <Button Style="{StaticResource Btn}" Content="{Binding ['actions.save_match'], Source={StaticResource Strings}}"
+                        <TextBlock Style="{StaticResource Title}" Text="{Binding ActionsSection, Source={StaticResource Strings}}" />
+                        <Button Style="{StaticResource Btn}" Content="{Binding ActionsSaveMatch, Source={StaticResource Strings}}"
                                 Command="{Binding SaveMatchCommand}" />
-                        <Button Style="{StaticResource Btn}" Content="{Binding ['actions.duplicate'], Source={StaticResource Strings}}"
+                        <Button Style="{StaticResource Btn}" Content="{Binding ActionsDuplicate, Source={StaticResource Strings}}"
                                 Command="{Binding SaveDuplicateCommand}" />
-                        <Button Style="{StaticResource Btn}" Content="{Binding ['actions.variant'], Source={StaticResource Strings}}"
+                        <Button Style="{StaticResource Btn}" Content="{Binding ActionsVariant, Source={StaticResource Strings}}"
                                 Command="{Binding SaveVariantCommand}" />
-                        <Button Style="{StaticResource Btn}" Content="{Binding ['actions.anomaly'], Source={StaticResource Strings}}"
+                        <Button Style="{StaticResource Btn}" Content="{Binding ActionsAnomaly, Source={StaticResource Strings}}"
                                 Command="{Binding SaveAnomalyCommand}" />
 
                         <Separator Margin="0,10" />
-                        <TextBlock Style="{StaticResource Title}" Text="{Binding ['numista.section'], Source={StaticResource Strings}}" />
-                        <TextBlock Text="{Binding ['numista.manual_link'], Source={StaticResource Strings}}" Margin="0,0,0,2" />
+                        <TextBlock Style="{StaticResource Title}" Text="{Binding NumistaSection, Source={StaticResource Strings}}" />
+                        <TextBlock Text="{Binding NumistaManualLink, Source={StaticResource Strings}}" Margin="0,0,0,2" />
                         <TextBox Text="{Binding NumistaLink, UpdateSourceTrigger=PropertyChanged}"
-                                 ToolTip="{Binding ['numista.link_example'], Source={StaticResource Strings}}" />
-                        <Button Style="{StaticResource Btn}" Content="{Binding ['numista.validate_link'], Source={StaticResource Strings}}"
+                                 ToolTip="{Binding NumistaLinkExample, Source={StaticResource Strings}}" />
+                        <Button Style="{StaticResource Btn}" Content="{Binding NumistaValidateLink, Source={StaticResource Strings}}"
                                 Command="{Binding ValidateNumistaCommand}" HorizontalAlignment="Left"
                                 Margin="0,4,0,0" />
-                        <TextBlock Text="{Binding ['numista.search_by_api'], Source={StaticResource Strings}}" Margin="0,8,0,2" />
+                        <TextBlock Text="{Binding NumistaSearchByApi, Source={StaticResource Strings}}" Margin="0,8,0,2" />
                         <TextBox Text="{Binding NumistaQuery, UpdateSourceTrigger=PropertyChanged}"
-                                 ToolTip="{Binding ['numista.search_placeholder'], Source={StaticResource Strings}}" />
-                        <Button Style="{StaticResource Btn}" Content="{Binding ['numista.search'], Source={StaticResource Strings}}"
+                                 ToolTip="{Binding NumistaSearchPlaceholder, Source={StaticResource Strings}}" />
+                        <Button Style="{StaticResource Btn}" Content="{Binding NumistaSearch, Source={StaticResource Strings}}"
                                 Command="{Binding NumistaSearchCommand}" HorizontalAlignment="Left"
                                 Margin="0,4,0,0" />
                         <ListView ItemsSource="{Binding NumistaResults}" SelectedItem="{Binding NumistaSelected}"
@@ -269,38 +265,38 @@
                                 </DataTemplate>
                             </ListView.ItemTemplate>
                         </ListView>
-                        <Button Style="{StaticResource Btn}" Content="{Binding ['numista.apply_item'], Source={StaticResource Strings}}"
+                        <Button Style="{StaticResource Btn}" Content="{Binding NumistaApplyItem, Source={StaticResource Strings}}"
                                 Command="{Binding ApplyNumistaItemCommand}" Margin="0,6,0,0" />
 
                         <Separator Margin="0,10" />
-                        <TextBlock Style="{StaticResource Title}" Text="{Binding ['coin.section'], Source={StaticResource Strings}}" />
+                        <TextBlock Style="{StaticResource Title}" Text="{Binding CoinSection, Source={StaticResource Strings}}" />
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0" Margin="0,0,6,0">
-                                <TextBlock Text="{Binding ['coin.mint_year'], Source={StaticResource Strings}}" />
+                                <TextBlock Text="{Binding CoinMintYear, Source={StaticResource Strings}}" />
                                 <TextBox Text="{Binding MintYear, UpdateSourceTrigger=PropertyChanged}" />
-                                <TextBlock Text="{Binding ['coin.mint'], Source={StaticResource Strings}}" Margin="0,6,0,2" />
+                                <TextBlock Text="{Binding CoinMint, Source={StaticResource Strings}}" Margin="0,6,0,2" />
                                 <TextBox Text="{Binding Mint, UpdateSourceTrigger=PropertyChanged}" />
                             </StackPanel>
                             <StackPanel Grid.Column="1">
-                                <TextBlock Text="{Binding ['coin.quality'], Source={StaticResource Strings}}" />
+                                <TextBlock Text="{Binding CoinQuality, Source={StaticResource Strings}}" />
                                 <ComboBox ItemsSource="{Binding QualityItems}"
                                           SelectedItem="{Binding Quality}" />
-                                <TextBlock Text="{Binding ['coin.anomaly_desc'], Source={StaticResource Strings}}" Margin="0,6,0,2" />
+                                <TextBlock Text="{Binding CoinAnomalyDesc, Source={StaticResource Strings}}" Margin="0,6,0,2" />
                                 <TextBox Text="{Binding AnomalyDesc, UpdateSourceTrigger=PropertyChanged}"
                                          AcceptsReturn="True" Height="56"
                                          VerticalScrollBarVisibility="Auto" />
                             </StackPanel>
                         </Grid>
-                        <Button Style="{StaticResource Btn}" Content="{Binding ['coin.save_attributes'], Source={StaticResource Strings}}"
+                        <Button Style="{StaticResource Btn}" Content="{Binding CoinSaveAttributes, Source={StaticResource Strings}}"
                                 Command="{Binding SaveAttributesCommand}" HorizontalAlignment="Left" />
 
                         <Separator Margin="0,10" />
-                        <TextBlock Style="{StaticResource Title}" Text="{Binding ['type.section'], Source={StaticResource Strings}}" />
-                        <TextBlock Text="{Binding ['type.name'], Source={StaticResource Strings}}" Margin="0,0,0,2" />
+                        <TextBlock Style="{StaticResource Title}" Text="{Binding TypeSection, Source={StaticResource Strings}}" />
+                        <TextBlock Text="{Binding TypeName, Source={StaticResource Strings}}" Margin="0,0,0,2" />
                         <TextBox Text="{Binding TypeEditor.Name, UpdateSourceTrigger=PropertyChanged}" />
                         <Grid>
                             <Grid.ColumnDefinitions>
@@ -308,34 +304,34 @@
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0" Margin="0,0,6,0">
-                                <TextBlock Text="{Binding ['type.issuer'], Source={StaticResource Strings}}" Margin="0,4,0,2" />
+                                <TextBlock Text="{Binding TypeIssuer, Source={StaticResource Strings}}" Margin="0,4,0,2" />
                                 <TextBox Text="{Binding TypeEditor.Issuer, UpdateSourceTrigger=PropertyChanged}" />
-                                <TextBlock Text="{Binding ['type.period'], Source={StaticResource Strings}}" Margin="0,4,0,2" />
+                                <TextBlock Text="{Binding TypePeriod, Source={StaticResource Strings}}" Margin="0,4,0,2" />
                                 <TextBox Text="{Binding TypeEditor.Period, UpdateSourceTrigger=PropertyChanged}" />
-                                <TextBlock Text="{Binding ['type.value'], Source={StaticResource Strings}}" Margin="0,4,0,2" />
+                                <TextBlock Text="{Binding TypeValue, Source={StaticResource Strings}}" Margin="0,4,0,2" />
                                 <TextBox Text="{Binding TypeEditor.Value, UpdateSourceTrigger=PropertyChanged}" />
-                                <TextBlock Text="{Binding ['type.currency'], Source={StaticResource Strings}}" Margin="0,4,0,2" />
+                                <TextBlock Text="{Binding TypeCurrency, Source={StaticResource Strings}}" Margin="0,4,0,2" />
                                 <TextBox Text="{Binding TypeEditor.Currency, UpdateSourceTrigger=PropertyChanged}" />
-                                <TextBlock Text="{Binding ['type.diameter'], Source={StaticResource Strings}}" Margin="0,4,0,2" />
+                                <TextBlock Text="{Binding TypeDiameter, Source={StaticResource Strings}}" Margin="0,4,0,2" />
                                 <TextBox Text="{Binding TypeEditor.Diameter, UpdateSourceTrigger=PropertyChanged}" />
                             </StackPanel>
                             <StackPanel Grid.Column="1">
-                                <TextBlock Text="{Binding ['type.years'], Source={StaticResource Strings}}" Margin="0,4,0,2" />
+                                <TextBlock Text="{Binding TypeYears, Source={StaticResource Strings}}" Margin="0,4,0,2" />
                                 <TextBox Text="{Binding TypeEditor.Years, UpdateSourceTrigger=PropertyChanged}" />
-                                <TextBlock Text="{Binding ['type.composition'], Source={StaticResource Strings}}" Margin="0,4,0,2" />
+                                <TextBlock Text="{Binding TypeComposition, Source={StaticResource Strings}}" Margin="0,4,0,2" />
                                 <TextBox Text="{Binding TypeEditor.Composition, UpdateSourceTrigger=PropertyChanged}" />
-                                <TextBlock Text="{Binding ['type.mass'], Source={StaticResource Strings}}" Margin="0,4,0,2" />
+                                <TextBlock Text="{Binding TypeMass, Source={StaticResource Strings}}" Margin="0,4,0,2" />
                                 <TextBox Text="{Binding TypeEditor.Mass, UpdateSourceTrigger=PropertyChanged}" />
-                                <TextBlock Text="{Binding ['type.thickness'], Source={StaticResource Strings}}" Margin="0,4,0,2" />
+                                <TextBlock Text="{Binding TypeThickness, Source={StaticResource Strings}}" Margin="0,4,0,2" />
                                 <TextBox Text="{Binding TypeEditor.Thickness, UpdateSourceTrigger=PropertyChanged}" />
-                                <TextBlock Text="{Binding ['type.shape'], Source={StaticResource Strings}}" Margin="0,4,0,2" />
+                                <TextBlock Text="{Binding TypeShape, Source={StaticResource Strings}}" Margin="0,4,0,2" />
                                 <TextBox Text="{Binding TypeEditor.Shape, UpdateSourceTrigger=PropertyChanged}" />
-                                <TextBlock Text="{Binding ['type.technique'], Source={StaticResource Strings}}" Margin="0,4,0,2" />
+                                <TextBlock Text="{Binding TypeTechnique, Source={StaticResource Strings}}" Margin="0,4,0,2" />
                                 <TextBox Text="{Binding TypeEditor.Technique, UpdateSourceTrigger=PropertyChanged}" />
-                                <TextBlock Text="{Binding ['type.orientation'], Source={StaticResource Strings}}" Margin="0,4,0,2" />
+                                <TextBlock Text="{Binding TypeOrientation, Source={StaticResource Strings}}" Margin="0,4,0,2" />
                                 <ComboBox ItemsSource="{Binding OrientationItems}"
                                           SelectedItem="{Binding TypeEditor.Orientation}" />
-                                <TextBlock Text="{Binding ['type.numista_url'], Source={StaticResource Strings}}" Margin="0,4,0,2" />
+                                <TextBlock Text="{Binding TypeNumistaUrl, Source={StaticResource Strings}}" Margin="0,4,0,2" />
                                 <TextBox Text="{Binding TypeEditor.NumistaUrl, UpdateSourceTrigger=PropertyChanged}" />
                             </StackPanel>
                         </Grid>
@@ -344,9 +340,9 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
-                            <Button Grid.Column="0" Style="{StaticResource Btn}" Content="{Binding ['type.load_type'], Source={StaticResource Strings}}"
+                            <Button Grid.Column="0" Style="{StaticResource Btn}" Content="{Binding TypeLoadType, Source={StaticResource Strings}}"
                                     Command="{Binding LoadTypeCommand}" Margin="0,0,6,0" />
-                            <Button Grid.Column="1" Style="{StaticResource Btn}" Content="{Binding ['type.save_type'], Source={StaticResource Strings}}"
+                            <Button Grid.Column="1" Style="{StaticResource Btn}" Content="{Binding TypeSaveType, Source={StaticResource Strings}}"
                                     Command="{Binding SaveTypeCommand}" />
                         </Grid>
                     </StackPanel>
