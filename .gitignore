@@ -1,0 +1,46 @@
+# ---- Внутренние / секретные документы (НЕ выкладывать в репозиторий) ----
+# Полное ТЗ и внутренние заметки не коммитятся
+docs/internal/
+SPEC_TZ.md
+**/SPEC*.md
+*.secret.md
+
+# ---- Python ----
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+*.egg-info/
+build/
+dist/
+*.npy
+*.bin
+*.faiss
+*.idx
+
+# ---- Windows / C# ----
+bin/
+obj/
+*.user
+.vs/
+.vscode/
+*.suo
+
+# ---- Данные и артефакты (локальные каталоги) ----
+/coimg/
+/data/
+/models/
+/weights/
+/tmp/
+*.log
+
+# ---- Секреты / ключи ----
+*.env
+.env.local
+*.apikey
+numista_apikey.txt
