@@ -57,6 +57,60 @@
                             Command="{Binding SwapSidesCommand}" />
 
                     <Separator Margin="0,10" />
+                    <TextBlock Style="{StaticResource Title}" Text="Пакетный режим" />
+                    <TextBlock Text="Альбом" Margin="0,4,0,2" />
+                    <TextBox Text="{Binding BatchAlbum, UpdateSourceTrigger=PropertyChanged}" />
+                    <Grid Margin="0,4,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Margin="0,0,6,0">
+                            <TextBlock Text="Страница" />
+                            <TextBox Text="{Binding BatchPage}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1">
+                            <TextBlock Text="Кол-во монет" />
+                            <TextBox Text="{Binding BatchCount}" />
+                        </StackPanel>
+                    </Grid>
+                    <Button Style="{StaticResource Btn}" Content="Открыть камеру"
+                            Command="{Binding OpenCameraCommand}" />
+                    <Button Style="{StaticResource Btn}" Content="Старт пакетной съёмки"
+                            Command="{Binding StartBatchCommand}"
+                            IsEnabled="{Binding BatchActive, Converter={StaticResource InverseBool}}" />
+                    <Button Style="{StaticResource Btn}" Content="Сделать кадр"
+                            Command="{Binding CaptureNextCommand}"
+                            IsEnabled="{Binding BatchActive}" />
+                    <Button Style="{StaticResource Btn}" Content="Отменить съёмку"
+                            Command="{Binding CancelBatchCommand}"
+                            IsEnabled="{Binding BatchActive}" />
+                    <Button Style="{StaticResource Btn}" Content="Сохранить все монеты пакета"
+                            Command="{Binding SaveBatchCommand}"
+                            IsEnabled="{Binding BatchPhase}"
+                            Visibility="Collapsed" />
+                    <TextBlock Text="{Binding BatchStatus}" Margin="0,6,0,0" TextWrapping="Wrap" />
+                    <ListView ItemsSource="{Binding BatchResults}" Height="140" Margin="0,6,0,0"
+                              SelectedItemStyle="{x:Null}">
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{Binding OrderNo}" Margin="0,0,8,0" />
+                                    <TextBlock Grid.Column="1" Text="{Binding ObversePct, StringFormat={}{0:0.0}%" />
+                                    <TextBlock Grid.Column="2" Text="{Binding ReversePct, StringFormat={}{0:0.0}%" />
+                                    <TextBlock Grid.Column="3" Text="{Binding Status}" Margin="8,0,0,0" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+
+                    <Separator Margin="0,10" />
                     <TextBlock Text="Аверс" FontWeight="SemiBold" Margin="0,0,0,2" />
                     <Image Source="{Binding ObverseImage}" Height="180" Stretch="Uniform"
                            Background="#FFEFEFEF" />

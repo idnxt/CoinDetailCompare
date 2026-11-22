@@ -9,11 +9,14 @@
     <RootNamespace>CoinDetailCompare.App</RootNamespace>
     <AssemblyName>CoinDetailCompare.App</AssemblyName>
     <Version>0.1.0</Version>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" />
+    <PackageReference Include="OpenCvSharp4" Version="4.9.0.74" />
+    <PackageReference Include="OpenCvSharp4.runtime.win" Version="4.9.0.74" />
   </ItemGroup>
 
   <ItemGroup>

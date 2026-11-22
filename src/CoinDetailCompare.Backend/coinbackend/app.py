@@ -60,6 +60,7 @@ def create_app() -> FastAPI:
                 min_size=CONFIG.min_size,
                 background_color=CONFIG.background_color,
                 orientation_deg=req.orientation_deg,
+                etalon_path=req.etalon_path,
             )
             img = res.pop("image")
             out_path = STORAGE.tmp_path(f"crop_{req.side}_{int(time.time())}.png")

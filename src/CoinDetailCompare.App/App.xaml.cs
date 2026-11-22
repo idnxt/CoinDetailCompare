@@ -16,7 +16,8 @@ public partial class App : Application
 
         var backend = new BackendClient(settings.BackendBaseUrl);
         var db = new DbService(settings.DbPath, settings.SchemaPath);
-        var camera = new CameraDeviceStub();
+        int camIndex = OpenCvCameraDevice.DetectFirstCamera();
+        var camera = camIndex >= 0 ? new OpenCvCameraDevice(camIndex) : new OpenCvCameraDevice(0);
         var loc = new LocalizationService(Path.Combine(baseDir, "Resources", "i18n"));
         loc.SetLanguage(settings.UiLanguage);
 

@@ -1,5 +1,4 @@
 using System.IO;
-using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using CoinDetailCompare.App.Models;
@@ -35,6 +34,16 @@ public class MainViewModel : ObservableObject
     private string _numistaLink = "";
     private int? _currentCoinId;
 
+    // ---- batch capture state ----
+    private string _batchAlbum = "";
+    private int _batchPage;
+    private int _batchCount;
+    private string _batchStatus = "";
+    private BatchPhase _batchPhase = BatchPhase.Idle;
+    private int _batchIndex;
+    private readonly List<string> _batchObverse = new();
+    private readonly List<string> _batchReverse = new();
+
     public MainViewModel(AppSettings settings, BackendClient backend, DbService db,
         ICameraDevice camera, LocalizationService loc)
     {
@@ -56,14 +65,21 @@ public class MainViewModel : ObservableObject
         NumistaSearchCommand = new RelayCommand(async NumistaSearchAsync);
         LoadObverseFileCommand = new RelayCommand(LoadObverseFile);
         LoadReverseFileCommand = new RelayCommand(LoadReverseFile);
+
+        OpenCameraCommand = new RelayCommand(OpenCamera);
+        StartBatchCommand = new RelayCommand(async StartBatchAsync);
+        CaptureNextCommand = new RelayCommand(async () => await CaptureNextAsync());
+        CancelBatchCommand = new RelayCommand(CancelBatch);
+        SaveBatchCommand = new RelayCommand(async SaveBatchAsync);
     }
 
-    public string Status => _status;
+    // ---- bindable properties ----
+    public string Status { get => _status; set => SetProperty(ref _status, value); }
     public string Album { get => _album; set => SetProperty(ref _album, value); }
     public int PageNo { get => _pageNo; set => SetProperty(ref _pageNo, value); }
     public int OrderNo { get => _orderNo; set => SetProperty(ref _orderNo, value); }
     public double Rotation { get => _rotation; set => SetProperty(ref _rotation, value); }
-    public bool IsBusy { get => _isBusy; private set => SetProperty(ref _isBusy, value); }
+    public bool IsBusy { get => _isBusy; set => SetProperty(ref _isBusy, value); }
     public string? ObversePath => _obversePath;
     public string? ReversePath => _reversePath;
     public ImageSource? ObverseImage { get => _obverseImage; private set => SetProperty(ref _obverseImage, value); }
@@ -76,6 +92,17 @@ public class MainViewModel : ObservableObject
     public string NumistaLink { get => _numistaLink; set => SetProperty(ref _numistaLink, value); }
     public int? CurrentCoinId => _currentCoinId;
 
+    // ---- batch properties ----
+    public string BatchAlbum { get => _batchAlbum; set => SetProperty(ref _batchAlbum, value); }
+    public int BatchPage { get => _batchPage; set => SetProperty(ref _batchPage, value); }
+    public int BatchCount { get => _batchCount; set => SetProperty(ref _batchCount, value); }
+    public string BatchStatus { get => _batchStatus; set => SetProperty(ref _batchStatus, value); }
+    public BatchPhase BatchPhase { get => _batchPhase; set => SetProperty(ref _batchPhase, value); }
+    public int BatchIndex => _batchIndex;
+    public bool BatchActive => _batchPhase is BatchPhase.Obverse or BatchPhase.Reverse;
+    public List<BatchResult> BatchResults { get; } = new();
+
+    // ---- commands ----
     public RelayCommand ShootObverseCommand { get; }
     public RelayCommand ShootReverseCommand { get; }
     public RelayCommand SwapSidesCommand { get; }
@@ -88,49 +115,98 @@ public class MainViewModel : ObservableObject
     public RelayCommand NumistaSearchCommand { get; }
     public RelayCommand LoadObverseFileCommand { get; }
     public RelayCommand LoadReverseFileCommand { get; }
+    public RelayCommand OpenCameraCommand { get; }
+    public RelayCommand StartBatchCommand { get; }
+    public RelayCommand CaptureNextCommand { get; }
+    public RelayCommand CancelBatchCommand { get; }
+    public RelayCommand SaveBatchCommand { get; }
 
     public string T(string key) => _loc.T(key);
 
-    // ---- capture ----
+    // ==================== camera ====================
+    private void OpenCamera()
+    {
+        if (_camera.IsOpen)
+        {
+            Status = _camera.Description ?? "camera open";
+            return;
+        }
+        if (_camera.Open())
+        {
+            Status = $"{_camera.Description} - open";
+        }
+        else
+        {
+            Status = T("capture.camera_offline");
+        }
+    }
+
+    // ==================== single-shot capture ====================
     private async Task ShootAsync(CoinSide side)
     {
         IsBusy = true;
-        Status = _loc.T("status.backend_down");
         try
         {
             string? raw;
-            if (_camera.TryGetFrame(out var frame) && frame != null)
+            if (_camera.IsOpen && _camera.TryGetFrame(out var frame) && frame != null)
             {
                 raw = SaveFrame(frame, side);
             }
             else
             {
-                Status = _loc.T("capture.camera_offline");
+                Status = T("capture.camera_offline");
                 IsBusy = false;
                 return;
             }
 
-            var req = new PreprocessRequest(
-                raw_path: raw,
-                side: side == CoinSide.Obverse ? "obverse" : "reverse",
-                target_size: _settings.TargetSize,
-                orientation_deg: Rotation);
-            var resp = await _backend.PreprocessAsync(req);
+            var resp = await PreprocessAsync(raw, side);
             if (resp is { ok: true } && !string.IsNullOrEmpty(resp.crop_path))
             {
-                if (side == CoinSide.Obverse) { _obversePath = resp.crop_path; ObverseImage = LoadImage(resp.crop_path); }
-                else { _reversePath = resp.crop_path; ReverseImage = LoadImage(resp.crop_path); }
+                if (side == CoinSide.Obverse)
+                {
+                    _obversePath = resp.crop_path;
+                    ObverseImage = LoadImage(resp.crop_path);
+                }
+                else
+                {
+                    _reversePath = resp.crop_path;
+                    ReverseImage = LoadImage(resp.crop_path);
+                }
                 Status = $"crop: {resp.shape_detected}, {resp.orientation_applied_deg:F1}deg";
             }
             else
             {
-                Status = resp?.error ?? _loc.T("status.error");
+                Status = resp?.error ?? T("status.error");
             }
         }
         finally
         {
             IsBusy = false;
         }
+    }
+
+    /// <summary>
+    /// Sends the raw photo to the backend for preprocessing.
+    /// If a matched etalon photo exists on disk, it is passed for auto-alignment.
+    /// </summary>
+    private async Task<PreprocessResponse?> PreprocessAsync(string rawPath, CoinSide side)
+    {
+        string? etalonPath = null;
+        if (_currentCoinId is int cid)
+        {
+            var etalon = _db.GetCoin(cid);
+            etalonPath = side == CoinSide.Obverse ? etalon?.ObversePhoto : etalon?.ReversePhoto;
+            if (!string.IsNullOrEmpty(etalonPath) && !File.Exists(etalonPath))
+                etalonPath = null;
+        }
+
+        var req = new PreprocessRequest(
+            raw_path: rawPath,
+            side: side == CoinSide.Obverse ? "obverse" : "reverse",
+            target_size: _settings.TargetSize,
+            orientation_deg: Rotation,
+            etalon_path: etalonPath);
+        return await _backend.PreprocessAsync(req);
     }
 
     private string SaveFrame(BitmapSource frame, CoinSide side)
@@ -172,12 +248,188 @@ public class MainViewModel : ObservableObject
         return dlg.ShowDialog() == true ? dlg.FileName : null;
     }
 
-    // ---- search ----
+    // ==================== batch capture ====================
+    /// <summary>
+    /// Batch mode: album/page are given BEFORE the run. All obverses are
+    /// captured first, then all reverses in the same order. Coins are
+    /// numbered 1..N by photo order.
+    /// </summary>
+    private async Task StartBatchAsync()
+    {
+        if (BatchCount < 1)
+        {
+            BatchStatus = T("status.error");
+            return;
+        }
+        if (!_camera.IsOpen)
+            OpenCamera();
+        if (!_camera.IsOpen)
+        {
+            BatchStatus = T("capture.camera_offline");
+            return;
+        }
+
+        _batchObverse.Clear();
+        _batchReverse.Clear();
+        BatchResults.Clear();
+        _batchIndex = 0;
+        BatchPhase = BatchPhase.Obverse;
+        BatchStatus = $"phase: obverse, 0/{BatchCount}";
+        await CaptureNextAsync();
+    }
+
+    private async Task CaptureNextAsync()
+    {
+        if (!BatchActive)
+            return;
+        IsBusy = true;
+        try
+        {
+            CoinSide side = BatchPhase == BatchPhase.Obverse ? CoinSide.Obverse : CoinSide.Reverse;
+            if (!_camera.TryGetFrame(out var frame) || frame == null)
+            {
+                BatchStatus = T("capture.camera_offline");
+                return;
+            }
+
+            var raw = SaveFrame(frame, side);
+            var resp = await PreprocessAsync(raw, side);
+            if (resp is not { ok: true } || string.IsNullOrEmpty(resp.crop_path))
+            {
+                // Retake: do not advance the order number.
+                BatchStatus = $"retry: {resp?.error ?? T("status.error")}";
+                return;
+            }
+
+            _batchIndex++;
+            int orderNo = _batchIndex;
+            if (BatchPhase == BatchPhase.Obverse)
+                _batchObverse.Add(resp.crop_path);
+            else
+                _batchReverse.Add(resp.crop_path);
+
+            if (BatchPhase == BatchPhase.Obverse)
+            {
+                ObverseImage = LoadImage(resp.crop_path);
+                if (_batchIndex >= BatchCount)
+                {
+                    BatchPhase = BatchPhase.Reverse;
+                    _batchIndex = 0;
+                    BatchStatus = "phase: reverse, 0/" + BatchCount;
+                    await CaptureNextAsync();
+                    return;
+                }
+                BatchStatus = $"phase: obverse, {_batchIndex}/{BatchCount}";
+            }
+            else
+            {
+                ReverseImage = LoadImage(resp.crop_path);
+                if (_batchIndex >= BatchCount)
+                {
+                    BatchPhase = BatchPhase.Done;
+                    BatchStatus = "capturing done - matching...";
+                    await MatchBatchAsync();
+                    return;
+                }
+                BatchStatus = $"phase: reverse, {_batchIndex}/{BatchCount}";
+            }
+            _ = orderNo; // order number == capture order, stored with results
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private void CancelBatch()
+    {
+        _batchObverse.Clear();
+        _batchReverse.Clear();
+        BatchResults.Clear();
+        _batchIndex = 0;
+        BatchPhase = BatchPhase.Idle;
+        BatchStatus = "";
+    }
+
+    /// <summary>After both phases: pair obverse[i]+reverse[i] and run search for each pair.</summary>
+    private async Task MatchBatchAsync()
+    {
+        for (int i = 0; i < BatchResults.Count || i < BatchCount; i++)
+        {
+            if (i >= _batchObverse.Count || i >= _batchReverse.Count)
+                break;
+            var result = new BatchResult
+            {
+                OrderNo = i + 1,
+                ObversePath = _batchObverse[i],
+                ReversePath = _batchReverse[i],
+            };
+            BatchResults.Add(result);
+
+            try
+            {
+                var req = new SearchRequest(
+                    crop_path: _batchObverse[i],
+                    side: "obverse",
+                    obverse_path: _batchObverse[i],
+                    reverse_path: _batchReverse[i],
+                    candidate_type_id: null,
+                    etalon_quality: null,
+                    topk: 10);
+                var resp = await _backend.SearchAsync(req);
+                if (resp is { candidates: { Count: > 0 } })
+                {
+                    var top = resp.candidates[0];
+                    result.TopCoinId = top.coin_id;
+                    result.ObversePct = Math.Round(top.obverse_pct, 1);
+                    result.ReversePct = Math.Round(top.reverse_pct, 1);
+                    result.Orientation = top.orientation;
+                    result.Status = $"{top.overall_pct:F1}%";
+                }
+                else
+                {
+                    result.Status = T("actions.not_determined");
+                }
+            }
+            catch
+            {
+                result.Status = T("status.error");
+            }
+        }
+        BatchStatus = $"matched {BatchResults.Count} coins";
+    }
+
+    /// <summary>Save every batch coin with album/page and photo-order numbering.</summary>
+    private async Task SaveBatchAsync()
+    {
+        int saved = 0;
+        for (int i = 0; i < BatchResults.Count; i++)
+        {
+            var r = BatchResults[i];
+            var id = _db.NextCoinId();
+            var coin = new Coin
+            {
+                Id = id,
+                AlbumName = string.IsNullOrEmpty(BatchAlbum) ? Album : BatchAlbum,
+                PageNo = BatchPage,
+                OrderNo = r.OrderNo,
+                ObversePhoto = r.ObversePath,
+                ReversePhoto = r.ReversePath,
+                SourceKind = r.TopCoinId != null ? SourceKind.Match : SourceKind.Manual,
+                EtalonId = r.TopCoinId,
+            };
+            _db.SaveCoin(coin);
+            saved++;
+        }
+        BatchStatus = $"{saved} saved";
+    }
+
+    // ==================== search ====================
     private async Task SearchAsync()
     {
         if (string.IsNullOrEmpty(_obversePath) && string.IsNullOrEmpty(_reversePath))
         {
-            Status = _loc.T("status.error");
+            Status = T("status.error");
             return;
         }
         IsBusy = true;
@@ -205,7 +457,7 @@ public class MainViewModel : ObservableObject
             }
             else
             {
-                Status = _loc.T("actions.not_determined");
+                Status = T("actions.not_determined");
             }
         }
         finally
@@ -218,10 +470,10 @@ public class MainViewModel : ObservableObject
     {
         (_obversePath, _reversePath) = (_reversePath, _obversePath);
         (ObverseImage, ReverseImage) = (ReverseImage, ObverseImage);
-        Status = _loc.T("actions.swap_sides");
+        Status = T("actions.swap_sides");
     }
 
-    // ---- save ----
+    // ==================== save ====================
     private async Task SaveAsync(SourceKind kind)
     {
         var id = _db.NextCoinId();
@@ -238,10 +490,10 @@ public class MainViewModel : ObservableObject
             ReversePhoto = _reversePath,
             SourceKind = kind,
             IsAnomaly = kind == SourceKind.Anomaly,
-            EtalonId = _currentCoinId
+            EtalonId = _currentCoinId,
         };
         _db.SaveCoin(coin);
-        Status = _loc.T("status.saved");
+        Status = T("status.saved");
     }
 
     private async Task RebuildIndexAsync()
@@ -252,7 +504,7 @@ public class MainViewModel : ObservableObject
             var counts = await _backend.RebuildIndexAsync();
             Status = counts is { }
                 ? $"index: obverse={counts["obverse"]}, reverse={counts["reverse"]}"
-                : _loc.T("status.error");
+                : T("status.error");
         }
         finally
         {
@@ -260,7 +512,7 @@ public class MainViewModel : ObservableObject
         }
     }
 
-    // ---- numista ----
+    // ==================== numista ====================
     private async Task NumistaSearchAsync()
     {
         IsBusy = true;
@@ -275,6 +527,7 @@ public class MainViewModel : ObservableObject
         }
     }
 
+    // ==================== helpers ====================
     private static ImageSource? LoadImage(string path)
     {
         if (!File.Exists(path)) return null;

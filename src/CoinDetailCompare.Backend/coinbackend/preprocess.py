@@ -155,8 +155,9 @@ def resize_keep_square(img: "np.ndarray", size: int) -> "np.ndarray":
 def auto_align_angle(img: "np.ndarray", etalon: "np.ndarray | None", max_deg: float = 30.0) -> float:
     """Estimate rotation to align `img` to `etalon` (if given).
 
-    Phase 1 baseline: template matching on a downsampled grayscale patch.
-    To be replaced / extended by RANSAC on DINOv3 patches once embedding is bound.
+    Phase 1 baseline: coarse-to-fine correlation of a downsampled grayscale
+    image over candidate angles. To be replaced / extended by RANSAC on
+    DINOv3 patches once real embedding is bound (Phase 2+).
     """
     cv2 = _cv2()
     if etalon is None:
@@ -164,17 +165,31 @@ def auto_align_angle(img: "np.ndarray", etalon: "np.ndarray | None", max_deg: fl
     small = 128
     a = cv2.resize(img, (small, small))
     b = cv2.resize(etalon, (small, small))
-    a = cv2.cvtColor(a, cv2.COLOR_BGR2GRAY)
-    b = cv2.cvtColor(b, cv2.COLOR_BGR2GRAY)
+    a = cv2.cvtColor(a, cv2.COLOR_BGR2GRAY).astype("float32")
+    b = cv2.cvtColor(b, cv2.COLOR_BGR2GRAY).astype("float32")
+    center = (small / 2.0, small / 2.0)
+    b_flat = b.ravel()
+
+    def score_at(deg: float) -> float:
+        m = cv2.getRotationMatrix2D(center, deg, 1.0)
+        ra = cv2.warpAffine(a, m, (small, small), flags=cv2.INTER_LINEAR).ravel()
+        c = float(np.corrcoef(ra, b_flat)[0, 1])
+        return c if not math.isnan(c) else -1.0
+
+    # Coarse scan: integer degrees
     best = 0.0
-    best_score = -1.0
+    best_score = score_at(0.0)
     for deg in range(-int(max_deg), int(max_deg) + 1):
-        m = cv2.getRotationMatrix2D((small / 2.0, small / 2.0), deg, 1.0)
-        ra = cv2.warpAffine(a, m, (small, small))
-        score = float(np.corrcoef(ra.ravel(), b.ravel())[0, 1])
-        if not math.isnan(score) and score > best_score:
-            best_score = score
-            best = float(deg)
+        s = score_at(float(deg))
+        if s > best_score:
+            best_score, best = s, float(deg)
+    # Fine pass: 0.25 deg steps around the coarse winner
+    deg = best - 1.0
+    while deg <= best + 1.0:
+        s = score_at(deg)
+        if s > best_score:
+            best_score, best = s, deg
+        deg += 0.25
     return best
 
 

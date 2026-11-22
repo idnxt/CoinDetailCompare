@@ -17,7 +17,8 @@ public record PreprocessRequest(
     string raw_path,
     string side,
     int target_size,
-    double orientation_deg);
+    double orientation_deg,
+    string? etalon_path);
 
 public record PreprocessResponse(
     bool ok,

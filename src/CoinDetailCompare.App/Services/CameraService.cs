@@ -1,9 +1,10 @@
 using System.Windows.Media.Imaging;
+using OpenCvSharp;
 
 namespace CoinDetailCompare.App.Services;
 
-/// <summary>Camera device abstraction. Real capture is bound in Phase 1.</summary>
-public interface ICameraDevice
+/// <summary>Camera device abstraction (webcam capture + frame streaming).</summary>
+public interface ICameraDevice : IDisposable
 {
     string? Description { get; }
     bool IsOpen { get; }
@@ -13,32 +14,86 @@ public interface ICameraDevice
 }
 
 /// <summary>
-/// Placeholder device so the app builds and runs without a capture backend.
-/// Phase 1: replace/extend with OpenCvSharp VideoCapture or Windows MediaCapture,
-/// streaming frames into the same interface.
+/// Real webcam capture via OpenCV (VideoCapture).
+/// On Windows OpenCvSharp uses DShow/MSMF; device 0 is the default camera.
 /// </summary>
-public class CameraDeviceStub : ICameraDevice
+public class OpenCvCameraDevice : ICameraDevice
 {
+    private readonly long _deviceIndex;
+    private VideoCapture? _capture;
+
     public string? Description { get; private set; }
     public bool IsOpen { get; private set; }
 
+    public OpenCvCameraDevice(int deviceIndex = 0)
+    {
+        _deviceIndex = deviceIndex;
+    }
+
+    /// <summary>
+    /// Finds the first usable camera index in 0..(maxIndex-1), or -1 if none.
+    /// </summary>
+    public static int DetectFirstCamera(int maxIndex = 4)
+    {
+        for (int i = 0; i < maxIndex; i++)
+        {
+            using var cap = new VideoCapture(i);
+            if (cap.IsOpened)
+            {
+                if (cap.Read(new Mat()))
+                    return i;
+            }
+        }
+        return -1;
+    }
+
     public bool Open()
     {
-        // TODO(Phase 1): open a real webcam and start streaming.
-        Description = "stub (no camera)";
+        if (IsOpen)
+            return true;
+        _capture = new VideoCapture(_deviceIndex);
+        if (!_capture.IsOpened)
+        {
+            _capture.Dispose();
+            _capture = null;
+            return false;
+        }
+        // Reasonable defaults for a desktop webcam.
+        _capture.Set(VideoCaptureProperties.Fps, 30);
+        Description = $"Camera #{_deviceIndex}";
         IsOpen = true;
         return true;
     }
 
     public bool TryGetFrame(out BitmapSource? frame)
     {
-        // TODO(Phase 1): grab the latest frame from the streaming device.
         frame = null;
-        return false;
+        if (_capture is not { IsOpened: true })
+            return false;
+
+        using var mat = new Mat();
+        if (!_capture.Read(mat) || mat.Empty())
+            return false;
+
+        // Encode as PNG bytes and decode into a WPF BitmapSource.
+        using var ms = new MemoryStream();
+        Cv2.ImEncode(".png", mat, ms);
+        var bmp = new BitmapImage();
+        bmp.BeginInit();
+        bmp.CacheOption = BitmapCacheOption.OnLoad;
+        bmp.StreamSource = new MemoryStream(ms.ToArray());
+        bmp.EndInit();
+        bmp.Freeze(); // safe across threads
+        frame = bmp;
+        return true;
     }
 
     public void Close()
     {
+        _capture?.Dispose();
+        _capture = null;
         IsOpen = false;
     }
+
+    public void Dispose() => Close();
 }

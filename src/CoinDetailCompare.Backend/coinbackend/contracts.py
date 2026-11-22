@@ -51,7 +51,9 @@ class PreprocessRequest(BaseModel):
     raw_path: str
     side: str = "obverse"
     target_size: int = 1024
-    orientation_deg: float = 0.0
+    orientation_deg: float = 0.0  # manual angle; 0.0 -> auto align
+    # Optional etalon crop for auto-alignment (e.g. the matched reference coin).
+    etalon_path: str | None = None
 
 
 class PreprocessResponse(BaseModel):
