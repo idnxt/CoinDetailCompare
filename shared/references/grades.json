@@ -1,0 +1,10 @@
+[
+  { "kind": "quality", "code": "G",   "ru": "Удовл. (G)",          "en": "Good (G)" },
+  { "kind": "quality", "code": "VG",  "ru": "Очень удовл. (VG)",   "en": "Very good (VG)" },
+  { "kind": "quality", "code": "F",   "ru": "Товарное (F)",        "en": "Fine (F)" },
+  { "kind": "quality", "code": "VF",  "ru": "Очень товарное (VF)", "en": "Very fine (VF)" },
+  { "kind": "quality", "code": "XF",  "ru": "Чёткое (XF)",         "en": "Extremely fine (XF)" },
+  { "kind": "quality", "code": "AU",  "ru": "Почти без износа (AU)", "en": "About uncirculated (AU)" },
+  { "kind": "quality", "code": "UNC", "ru": "Без следов обращения (UNC)", "en": "Uncirculated (UNC)" },
+  { "kind": "quality", "code": "MS",  "ru": "Штемпельное (MS)",    "en": "Mint state (MS)" }
+]

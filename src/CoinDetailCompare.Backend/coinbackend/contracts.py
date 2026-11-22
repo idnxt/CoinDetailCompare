@@ -67,12 +67,34 @@ class PreprocessResponse(BaseModel):
     error: str | None = None
 
 
+class EmbedRequest(BaseModel):
+    coin_id: int
+    obverse_path: str | None = None
+    reverse_path: str | None = None
+
+
+class EmbedSideResult(BaseModel):
+    side: str
+    photo_path: str | None = None
+    vector_path: str | None = None
+    dim: int | None = None
+
+
+class EmbedResponse(BaseModel):
+    ok: bool
+    coin_id: int
+    sides: list[EmbedSideResult] = Field(default_factory=list)
+    error: str | None = None
+
+
 class AnomalyRequest(BaseModel):
     crop_path: str
     side: str = "obverse"
     reference_ids: list[int] = Field(default_factory=list)
     heatmap_size: int = 128
     threshold: float | None = None
+    # When known, heatmap files are persisted under this coin id.
+    coin_id: int | None = None
 
 
 class BoundingBox(BaseModel):

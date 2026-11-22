@@ -17,8 +17,10 @@ from coinbackend.storage import Storage  # noqa: E402
 
 def main() -> int:
     cfg = Config.load()
-    storage = Storage(cfg)
+    storage = Storage(cfg)  # also populates the reference table
     print(f"Database initialized at: {cfg.db_path}")
+    refs = storage.list_references()
+    print(f"References loaded: {len(refs)} rows")
     # Verify tables exist.
     with storage.connect() as con:
         rows = con.execute(

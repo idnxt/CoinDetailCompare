@@ -4,6 +4,7 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
+import numpy as np
 from fastapi import FastAPI, HTTPException
 
 from . import __version__
@@ -12,6 +13,9 @@ from .config import Config
 from .contracts import (
     AnomalyRequest,
     AnomalyResponse,
+    EmbedRequest,
+    EmbedResponse,
+    EmbedSideResult,
     NumistaSearchRequest,
     NumistaSearchResponse,
     PreprocessRequest,
@@ -109,6 +113,43 @@ def create_app() -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc))
 
+    @app.get("/references")
+    def references(kind: str | None = None):
+        """Reference lists (quality, rim, orientation, country) for UI dropdowns."""
+        return {"items": STORAGE.list_references(kind)}
+
+    @app.post("/embed", response_model=EmbedResponse)
+    def embed_endpoint(req: EmbedRequest):
+        """Embed one or both crops and persist {id}_{side}.png + .npy + index entry."""
+        try:
+            import shutil
+
+            sides: list[EmbedSideResult] = []
+            for side in ("obverse", "reverse"):
+                src = req.obverse_path if side == "obverse" else req.reverse_path
+                if not src:
+                    continue
+                img = _read_bgr(src)
+                vec = EMBEDDER.embed_image(img)
+                photo = STORAGE.photo_path(req.coin_id, side)
+                shutil.copyfile(src, photo)
+                _write_bgr(photo, img)  # re-encode consistent (BGR, no EXIF)
+                vpath = STORAGE.vector_path(req.coin_id, side)
+                np.save(str(vpath), vec.astype("float32"))
+                SEARCH.add_vector(req.coin_id, side, vec)
+                sides.append(
+                    EmbedSideResult(
+                        side=side,
+                        photo_path=str(photo),
+                        vector_path=str(vpath),
+                        dim=int(vec.shape[0]),
+                    )
+                )
+            SEARCH.persist()
+            return EmbedResponse(ok=True, coin_id=req.coin_id, sides=sides)
+        except Exception as exc:
+            return EmbedResponse(ok=False, coin_id=req.coin_id, error=str(exc))
+
     @app.post("/anomaly", response_model=AnomalyResponse)
     def anomaly_endpoint(req: AnomalyRequest):
         try:
@@ -118,6 +159,7 @@ def create_app() -> FastAPI:
                 reference_ids=req.reference_ids,
                 heatmap_size=req.heatmap_size,
                 threshold=req.threshold,
+                coin_id=req.coin_id,
             )
             return AnomalyResponse(**result)
         except NotImplementedError as exc:
@@ -144,6 +186,8 @@ def create_app() -> FastAPI:
     def numista_parse_endpoint(payload: dict):
         link = payload.get("link", "")
         try:
+            if payload.get("fetch_meta"):
+                return NUMISTA.fetch_meta(link)
             return parse_manual_numista_link(link)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))

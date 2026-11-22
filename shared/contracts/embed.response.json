@@ -1,0 +1,13 @@
+{
+  "ok": true,
+  "coin_id": 1,
+  "sides": [
+    {
+      "side": "obverse",
+      "photo_path": "E:/CoinDetailCompare/coimg/1_obverse.png",
+      "vector_path": "E:/CoinDetailCompare/coimg/1_obverse.npy",
+      "dim": 1024
+    }
+  ],
+  "error": null
+}

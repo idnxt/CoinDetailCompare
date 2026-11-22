@@ -1,0 +1,7 @@
+[
+  { "kind": "rim", "code": "plain",    "ru": "Гладкий",           "en": "Plain" },
+  { "kind": "rim", "code": "reeded",   "ru": "Гурт насечённый",    "en": "Reeded" },
+  { "kind": "rim", "code": "toothed",  "ru": "Зубчатый",          "en": "Toothed (denticled)" },
+  { "kind": "rim", "code": "engraved", "ru": "Гурт с надписью",   "en": "Engraved" },
+  { "kind": "rim", "code": "beaded",   "ru": "Шариковый",         "en": "Beaded" }
+]

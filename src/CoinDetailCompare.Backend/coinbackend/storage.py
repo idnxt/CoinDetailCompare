@@ -29,6 +29,37 @@ class Storage:
         with sqlite3.connect(self.cfg.db_path) as con:
             con.executescript(schema)
             con.commit()
+        self.populate_references()
+
+    # ---- reference lists (shared/references/*.json -> reference table) ----
+    def populate_references(self) -> int:
+        """Load shared/references/*.json into the reference table (idempotent)."""
+        refs_dir = self.cfg.references_dir
+        if not refs_dir.exists():
+            return 0
+        inserted = 0
+        with sqlite3.connect(self.cfg.db_path) as con:
+            for f in sorted(refs_dir.glob("*.json")):
+                items = json.loads(f.read_text(encoding="utf-8"))
+                for it in items:
+                    cur = con.execute(
+                        "INSERT OR IGNORE INTO reference (kind, code, ru, en) VALUES (?,?,?,?)",
+                        (it.get("kind"), it.get("code"), it.get("ru"), it.get("en")),
+                    )
+                    inserted += cur.rowcount
+            con.commit()
+        return inserted
+
+    def list_references(self, kind: str | None = None) -> list[dict]:
+        with sqlite3.connect(self.cfg.db_path) as con:
+            con.row_factory = sqlite3.Row
+            if kind:
+                rows = con.execute(
+                    "SELECT kind, code, ru, en FROM reference WHERE kind=? ORDER BY code", (kind,)
+                )
+            else:
+                rows = con.execute("SELECT kind, code, ru, en FROM reference ORDER BY kind, code")
+            return [dict(r) for r in rows.fetchall()]
 
     def connect(self) -> sqlite3.Connection:
         con = sqlite3.connect(self.cfg.db_path)

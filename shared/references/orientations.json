@@ -1,0 +1,5 @@
+[
+  { "kind": "orientation", "code": "0",   "ru": "Вертикальная (0°)",     "en": "Up (0°)" },
+  { "kind": "orientation", "code": "90",  "ru": "Горизонтальная (90°)",  "en": "Left (90°)" },
+  { "kind": "orientation", "code": "180", "ru": "Инвертированная (180°)","en": "Down (180°)" }
+]

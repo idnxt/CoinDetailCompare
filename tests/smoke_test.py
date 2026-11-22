@@ -18,8 +18,8 @@ from coinbackend.storage import Storage  # noqa: E402
 
 
 def _tmp_coimg(tmp: Path) -> Config:
-    cfg = Config.__new__(Config)
-    # Bypass load() so we don't read the repo config file; set fields directly.
+    # Use defaults (not Config.load()) so we don't read the repo config file.
+    cfg = Config()
     cfg.host = "127.0.0.1"
     cfg.port = 8300
     cfg.coimg_dir = tmp / "coimg"

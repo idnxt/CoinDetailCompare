@@ -1,7 +1,8 @@
 """Vector search: two FAISS IndexIDMap indexes (obverse, reverse).
 
-Fallback: NumPy brute-force with identical interface when faiss is unavailable.
 FAISS id == coin.id (hard binding to SQLite).
+Fallback: NumPy brute-force with the identical interface when faiss is
+unavailable (local dev / CI).
 """
 from __future__ import annotations
 
@@ -13,33 +14,68 @@ from .storage import Storage
 _SIDES = ("obverse", "reverse")
 
 
+def _faiss():
+    try:
+        import faiss  # type: ignore
+        return faiss
+    except Exception:
+        return None
+
+
 class _Index:
-    def __init__(self, dim: int, id_map: bool = True) -> None:
+    def __init__(self, dim: int, use_faiss: bool | None = None) -> None:
         self.dim = dim
-        self.id_map = id_map
         self.ids: list[int] = []
-        self.matrix: np.ndarray | None = None  # (N, dim) float32
+        self.matrix: np.ndarray | None = None  # (N, dim) float32, numpy fallback
         self._faiss = None
+        self._id_set: set[int] = set()
+        if use_faiss is None:
+            use_faiss = _faiss() is not None
+        if use_faiss:
+            faiss = _faiss()
+            inner = faiss.IndexFlatIP(dim)  # unit vectors -> inner product == cosine
+            self._faiss = faiss.IndexIDMap(inner)
+
+    @property
+    def using_faiss(self) -> bool:
+        return self._faiss is not None
 
     def add(self, coin_id: int, vec: np.ndarray) -> None:
+        """Insert or replace the vector for `coin_id` (upsert semantics)."""
         vec = np.asarray(vec, dtype="float32").reshape(self.dim)
-        if self.id_map and self._faiss is not None:
-            self._faiss.add_with_ids(vec.reshape(1, -1), np.array([coin_id], dtype="int64"))
+        if coin_id in self._id_set:
+            self._remove(coin_id)
+        self._id_set.add(coin_id)
         self.ids.append(coin_id)
-        if self.matrix is None:
-            self.matrix = vec[None, :]
+        if self._faiss is not None:
+            self._faiss.add_with_ids(vec.reshape(1, -1), np.array([coin_id], dtype="int64"))
         else:
-            self.matrix = np.vstack([self.matrix, vec[None, :]])
+            if self.matrix is None:
+                self.matrix = vec[None, :]
+            else:
+                self.matrix = np.vstack([self.matrix, vec[None, :]])
+
+    def _remove(self, coin_id: int) -> None:
+        if self._faiss is not None:
+            self._faiss.remove_ids(np.array([coin_id], dtype="int64"))
+            self._id_set.discard(coin_id)
+            return
+        if self.matrix is None:
+            return
+        i = self.ids.index(coin_id)
+        self.ids.pop(i)
+        self.matrix = np.delete(self.matrix, i, axis=0)
+        self._id_set.discard(coin_id)
 
     def search(self, vec: np.ndarray, topk: int = 10):
+        """Return [(coin_id, cosine_score), ...] best first."""
         vec = np.asarray(vec, dtype="float32").reshape(1, self.dim)
-        if self._faiss is not None and self.id_map:
-            scores, idxs = self._faiss.search(vec, topk)
-            out = []
-            for s, i in zip(scores[0], idxs[0]):
-                if i >= 0:
-                    out.append((int(i), float(s)))
-            return out
+        if self._faiss is not None:
+            k = min(topk, int(self._faiss.ntotal))
+            if k <= 0:
+                return []
+            scores, idxs = self._faiss.search(vec, k)
+            return [(int(i), float(s)) for s, i in zip(scores[0], idxs[0]) if i >= 0]
         return self._brute(vec, topk)
 
     def _brute(self, vec: np.ndarray, topk: int):
@@ -50,35 +86,34 @@ class _Index:
         return [(int(self.ids[i]), float(scores[i])) for i in order]
 
     def save(self, path: str) -> None:
-        if self._faiss is not None and self.id_map:
-            import faiss  # type: ignore
+        if self._faiss is not None:
+            faiss = _faiss()
             faiss.write_index(self._faiss, path)
         else:
             np.savez(
                 path + ".npz",
                 ids=np.array(self.ids, dtype="int64"),
-                matrix=self.matrix if self.matrix is not None else np.zeros((0, self.dim), dtype="float32"),
+                matrix=self.matrix if self.matrix is not None
+                else np.zeros((0, self.dim), dtype="float32"),
             )
 
     def load(self, path: str) -> bool:
-        if path.endswith(".faiss"):
+        import os
+        if os.path.exists(path) and self._faiss is not None:
+            faiss = _faiss()
             try:
-                import faiss  # type: ignore
                 self._faiss = faiss.read_index(path)
-                self.ids = []
-                self.matrix = None
+                self.ids = [int(i) for i in self._faiss.get_ids()]
+                self._id_set = set(self.ids)
                 return True
             except Exception:
-                return False
+                self._faiss = None
         npz = path + ".npz"
-        if npz.endswith(".faiss.npz"):
-            pass
-        import os
-        if os.path.exists(path + ".npz"):
-            data = np.load(path + ".npz")
+        if os.path.exists(npz):
+            data = np.load(npz)
             self.ids = [int(x) for x in data["ids"].tolist()]
+            self._id_set = set(self.ids)
             self.matrix = data["matrix"].astype("float32")
-            self._faiss = None
             return True
         return False
 
@@ -114,6 +149,8 @@ class SearchEngine:
             idx = self.obverse if side == "obverse" else self.reverse
             for coin_id, vpath in self.storage.iter_vectors(side):
                 vec = np.load(vpath)
+                if vec.shape[0] != self.cfg.embedding_dim:
+                    continue  # dim mismatch (model change) - skip, will re-embed
                 idx.add(coin_id, vec)
                 counts[side] += 1
         self.persist()

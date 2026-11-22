@@ -15,17 +15,22 @@ class NumistaClient:
     def __init__(self, cfg: Config) -> None:
         self.cfg = cfg
 
-    def search(self, query: str, limit: int = 20) -> list[dict]:
-        import requests  # type: ignore
-
-        url = f"{self.cfg.numista_base_url}/search"
-        headers = {}
+    def _headers(self) -> dict:
+        headers = {"User-Agent": "CoinDetailCompare/0.1 (local catalog tool)"}
         if self.cfg.numista_api_key:
             # Numista API expects the token in the Authorization header.
             headers["Authorization"] = f"Token {self.cfg.numista_api_key}"
-        params = {"searchtext": query, "limit": limit}
+        return headers
+
+    def search(self, query: str, limit: int = 20) -> list[dict]:
+        import requests  # type: ignore
+
+        url = f"{self.cfg.numista_base_url}{self.cfg.numista_search_path}"
+        params = {"searchtext": query, "q": query, "limit": limit, "page": 1}
         try:
-            resp = requests.get(url, params=params, headers=headers, timeout=20)
+            resp = requests.get(
+                url, params=params, headers=self._headers(), timeout=20
+            )
             resp.raise_for_status()
             data = resp.json()
         except Exception as exc:  # network / parse / auth
@@ -35,25 +40,95 @@ class NumistaClient:
     def _parse(self, data) -> list[dict]:
         """Best-effort mapping of the API response to normalized items.
 
-        Finalize field names against the live API doc in Phase 6.
+        Tolerates several known/plausible response shapes: a bare list, or a
+        dict wrapping the list under any of results/items/series/data.
         """
+        if isinstance(data, dict) and data.get("error"):
+            return [{"error": str(data["error"])}]
+
+        results = []
+        if isinstance(data, list):
+            results = data
+        elif isinstance(data, dict):
+            for key in ("results", "items", "series", "data", "hits", "rows"):
+                v = data.get(key)
+                if isinstance(v, list):
+                    results = v
+                    break
+                if isinstance(v, dict):  # nested, e.g. {"data": {"items": [...]}}
+                    for k2 in ("items", "results", "series", "list"):
+                        v2 = v.get(k2)
+                        if isinstance(v2, list):
+                            results = v2
+                            break
+                    if results:
+                        break
+
         items: list[dict] = []
-        # Expected: {"results": [ { "id": int, "title": str, "image": {...}, ... } ]}
-        results = data.get("results", data.get("items", [])) if isinstance(data, dict) else []
         for r in results:
             if not isinstance(r, dict):
                 continue
+            num_id = _as_int(
+                r.get("numista_id") or r.get("id") or r.get("series_id") or r.get("coin_id")
+            )
             items.append(
                 {
-                    "numista_id": _as_int(r.get("id") or r.get("numista_id")),
-                    "title": r.get("title") or r.get("name"),
-                    "url": _numista_url(r.get("id") or r.get("numista_id"), r.get("url")),
-                    "country": r.get("country"),
-                    "denomination": r.get("denomination") or r.get("value"),
+                    "numista_id": num_id,
+                    "title": r.get("title") or r.get("name") or r.get("name_ru"),
+                    "url": _numista_url(num_id, r.get("url")),
+                    "country": r.get("country") or r.get("country_name"),
+                    "denomination": r.get("denomination") or r.get("value") or r.get("name"),
                     "year": str(r.get("date") or r.get("year") or ""),
                 }
             )
         return items
+
+    def fetch_meta(self, link: str) -> dict:
+        """Validate a manual link and fetch a bit of metadata for it.
+
+        Tries the API (series/coin by id) first, then falls back to the
+        public web page <title>. Returns the parse result plus optional
+        `title`/`source`.
+        """
+        info = parse_manual_numista_link(link)
+        info["title"] = None
+        info["source"] = None
+        import requests  # type: ignore
+
+        num_id = info["numista_id"]
+        # 1) API endpoint (best effort)
+        for path in (f"/series/{num_id}", f"/coins/{num_id}"):
+            try:
+                resp = requests.get(
+                    f"{self.cfg.numista_base_url}{path}",
+                    headers=self._headers(),
+                    timeout=15,
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    title = (
+                        (data.get("title") or data.get("name") or data.get("name_ru"))
+                        if isinstance(data, dict)
+                        else None
+                    )
+                    if title:
+                        info["title"] = title
+                        info["source"] = "api"
+                        return info
+            except Exception:
+                continue
+        # 2) Public page <title>
+        page_url = f"https://ru.numista.com/{num_id}"
+        try:
+            resp = requests.get(page_url, headers=self._headers(), timeout=15)
+            if resp.status_code == 200:
+                m = re.search(r"<title[^>]*>(.*?)</title>", resp.text, re.S | re.I)
+                if m:
+                    info["title"] = m.group(1).strip()
+                    info["source"] = "page"
+        except Exception:
+            pass
+        return info
 
 
 def _as_int(v) -> int | None:

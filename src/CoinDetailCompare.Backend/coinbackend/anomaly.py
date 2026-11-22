@@ -35,18 +35,170 @@ class AnomalyDetector:
         threshold: float | None = None,
         coin_id: int | None = None,
     ) -> dict:
-        if self._backend is not None:
-            return self._detect_backend(crop_path, reference_ids, heatmap_size, threshold)
+        backend = self._get_backend()
+        if backend is not None:
+            name, det = backend
+            try:
+                if name == "anomalydino":
+                    return self._detect_anomalydino(
+                        det, crop_path, side, heatmap_size, threshold, coin_id
+                    )
+                if name == "superadd":
+                    return self._detect_superadd(
+                        det, crop_path, side, reference_ids, heatmap_size, threshold, coin_id
+                    )
+            except Exception:
+                # Broken / incompatible anomalib build: disable and fall back.
+                self._backend = None
         return self._detect_patch(
             crop_path, reference_ids, heatmap_size, threshold, side, coin_id
         )
 
-    # ---- production backend (SuperADD / AnomalyDINO) ----
-    def _detect_backend(self, crop_path, reference_ids, heatmap_size, threshold):
-        # TODO(Phase 4): bind SuperADD (anomalib) or AnomalyDINO.
-        # Build memory bank from reference_ids, run predict -> image-level score +
-        # anomaly map, resize map to heatmap_size, threshold -> bboxes.
-        raise NotImplementedError("Production anomaly backend not bound yet (Phase 4).")
+    # ---- production backend selection (guarded: everything is optional) ----
+    def _get_backend(self):
+        if self._backend is not None:
+            return self._backend
+        want = self.cfg.anomaly_backend
+        try:
+            import torch  # noqa: F401  # type: ignore
+        except Exception:
+            self._backend = None
+            return None
+
+        if want in ("auto", "anomalydino"):
+            try:
+                from anomalib.models import AnomalyDINO  # type: ignore
+
+                from .embed import _device  # verified cuda-or-cpu pick
+
+                device = str(_device(self.cfg))
+                det = AnomalyDINO(model_name="dinov2-small")
+                det = det.to(device)
+                det.eval()
+                self._backend = ("anomalydino", det)
+                return self._backend
+            except Exception:
+                pass
+
+        if want in ("auto", "superadd"):
+            try:
+                from anomalib.models import SuperADD  # type: ignore
+
+                self._backend = ("superadd", SuperADD())
+                return self._backend
+            except Exception:
+                pass
+
+        self._backend = None
+        return None
+
+    # ---- AnomalyDINO (anomalib, training-free) ----
+    def _detect_anomalydino(self, det, crop_path, side, heatmap_size, threshold, coin_id):
+        import cv2  # type: ignore
+
+        thr = self.cfg.anomaly_threshold if threshold is None else threshold
+        pred = det.predict(data=[str(crop_path)], return_anomaly_map=True)
+        score = float(pred.pred_score[0])
+        norm = self._map_to_numpy(pred.anomaly_map, heatmap_size)
+
+        return self._finalize(
+            norm, score, thr, heatmap_size, side, coin_id, crop_path
+        )
+
+    # ---- SuperADD (anomalib, trained on the normal reference crops) ----
+    def _detect_superadd(self, model, crop_path, side, reference_ids, heatmap_size, threshold, coin_id):
+        import shutil
+        import tempfile
+
+        import cv2  # type: ignore
+
+        refs = [
+            self.storage.photo_path(cid, side)
+            for cid in reference_ids
+            if self.storage.photo_path(cid, side).exists()
+        ]
+        if not refs:
+            raise RuntimeError("no reference crops available for SuperADD training")
+
+        # Train (or retrain) on the normal reference crops, lazily.
+        with tempfile.TemporaryDirectory() as td:
+            for p in refs:
+                shutil.copyfile(p, Path(td) / p.name)
+            from lightning.pytorch import Trainer  # type: ignore
+            from anomalib.data import LightningDataModule  # type: ignore
+
+            dm = LightningDataModule(folder_path=td, image_size=(256, 256), num_workers=0)
+            trainer = Trainer(
+                max_epochs=5,
+                logger=False,
+                enable_checkpointing=False,
+                accelerator="auto",
+                devices=1,
+            )
+            model.fit(dm.train_dataloader())
+
+        pred = model.predict(data=[str(crop_path)], return_anomaly_map=True)
+        score = float(pred.pred_score[0])
+        norm = self._map_to_numpy(pred.anomaly_map, heatmap_size)
+        thr = self.cfg.anomaly_threshold if threshold is None else threshold
+        return self._finalize(norm, score, thr, heatmap_size, side, coin_id, crop_path)
+
+    # ---- shared: anomaly map -> heatmap + boxes + persistence ----
+    def _map_to_numpy(self, anomaly_map, size: int) -> "np.ndarray":
+        import cv2  # type: ignore
+
+        arr = anomaly_map
+        # tensor (1,H,W) / (H,W,3) / (H,W) -> float HxW
+        try:
+            import torch  # type: ignore
+
+            arr = torch.as_tensor(arr).float().cpu()
+            if arr.ndim == 4:
+                arr = arr[0]
+            if arr.ndim == 3 and arr.shape[-1] == 3:
+                arr = arr.mean(dim=-1)
+            elif arr.ndim == 3:
+                arr = arr[0]
+            arr = arr.numpy()
+        except Exception:
+            pass
+        arr = np.asarray(arr, dtype="float32")
+        dmax = float(arr.max()) if arr.size else 0.0
+        norm = arr / dmax if dmax > 0 else arr
+        norm = cv2.resize(norm, (size, size), interpolation=cv2.INTER_LINEAR)
+        return norm.astype("float32")
+
+    def _finalize(self, norm, score, thr, heatmap_size, side, coin_id, crop_path):
+        import cv2  # type: ignore
+
+        is_anomaly = score >= thr
+        boxes = self._find_boxes(norm, thr)
+
+        heat_path = None
+        heat_mat_path = None
+        if coin_id is not None:
+            heat_mat_path = str(self.storage.heatmap_matrix_path(coin_id, side))
+            np.save(heat_mat_path, norm)
+            query = cv2.imread(str(crop_path), cv2.IMREAD_COLOR)
+            if query is not None:
+                heat_img = self._to_colormap(norm, query.shape)
+                heat_path = str(self.storage.heatmap_image_path(coin_id, side))
+                cv2.imwrite(heat_path, heat_img)
+
+        top = []
+        for idx in np.argsort(-norm.ravel())[:8]:
+            i, j = divmod(int(idx), heatmap_size)
+            top.append({"row": i, "col": j, "distance": round(float(norm[i, j]), 4)})
+
+        return {
+            "is_anomaly": is_anomaly,
+            "score": round(score, 4),
+            "heatmap_path": heat_path,
+            "heatmap_matrix_path": heat_mat_path,
+            "heatmap_size": heatmap_size,
+            "bounding_boxes": boxes,
+            "top_patches": top,
+        }
 
     # ---- dev fallback: patch-level distance to a memory bank ----
     def _detect_patch(self, crop_path, reference_ids, heatmap_size, threshold, side, coin_id):
