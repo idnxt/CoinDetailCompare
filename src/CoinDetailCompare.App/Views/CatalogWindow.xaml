@@ -1,0 +1,52 @@
+<Window x:Class="CoinDetailCompare.App.Views.CatalogWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Catalog"
+        Width="780" Height="500"
+        WindowStartupLocation="CenterScreen">
+    <DockPanel Margin="12">
+        <!-- Toolbar -->
+        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+            <Button DockPanel.Dock="Right" Style="{StaticResource Btn}" Margin="0"
+                    Content="{Binding CatalogRefresh, Source={StaticResource Strings}}"
+                    Command="{Binding RefreshCommand}" />
+            <TextBlock Text="{Binding CatalogTitle, Source={StaticResource Strings}}"
+                       FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
+        </DockPanel>
+
+        <!-- Status line -->
+        <Border DockPanel.Dock="Bottom" Background="#FF2B2E33" Padding="10,6" Margin="0,10,0,0">
+            <TextBlock Text="{Binding Status}" Foreground="#FFF0F0F0" />
+        </Border>
+
+        <!-- Coin list: code (album.page.number), kind Э/Д/А, name -->
+        <DataGrid ItemsSource="{Binding Items}"
+                  AutoGenerateColumns="False"
+                  CanUserAddRows="False" CanUserDeleteRows="False" IsReadOnly="True"
+                  GridLinesVisibility="Horizontal" SelectionMode="Single"
+                  AlternatingRowBackground="#FFF2F3F5"
+                  MouseDoubleClick="OnRowDoubleClick">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="№" Binding="{Binding Id}" Width="50" />
+                <DataGridTextColumn Header="{Binding CatalogCode, Source={StaticResource Strings}}"
+                                    Binding="{Binding Code}" Width="120" />
+                <DataGridTextColumn Header="{Binding CatalogKind, Source={StaticResource Strings}}"
+                                    Binding="{Binding Kind}" Width="45" />
+                <DataGridTextColumn Header="{Binding CatalogName, Source={StaticResource Strings}}"
+                                    Binding="{Binding Name}" Width="*" />
+                <DataGridTextColumn Header="{Binding CatalogYear, Source={StaticResource Strings}}"
+                                    Binding="{Binding Year}" Width="70" />
+                <DataGridTemplateColumn Width="110">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Button Content="{Binding CatalogEdit, Source={StaticResource Strings}}"
+                                    Padding="8,3"
+                                    Command="{Binding DataContext.EditCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                    CommandParameter="{Binding}" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+            </DataGrid.Columns>
+        </DataGrid>
+    </DockPanel>
+</Window>

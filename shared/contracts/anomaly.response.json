@@ -3,6 +3,7 @@
   "score": 0.63,
   "heatmap_path": "E:/CoinDetailCompare/coimg/9001_obverse_heatmap.png",
   "heatmap_matrix_path": "E:/CoinDetailCompare/coimg/9001_obverse_heatmap.npy",
+  "normalized_path": "E:/CoinDetailCompare/coimg/9001_obverse_norm.png",
   "heatmap_size": 128,
   "bounding_boxes": [
     { "x": 0.31, "y": 0.42, "w": 0.18, "h": 0.20 }

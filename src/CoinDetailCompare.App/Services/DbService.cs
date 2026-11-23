@@ -135,6 +135,17 @@ public class DbService
         };
     }
 
+    public List<Coin> ListAllCoins()
+    {
+        using var conn = Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT * FROM coin ORDER BY album_name, page_no, order_no, id;";
+        using var r = cmd.ExecuteReader();
+        var list = new List<Coin>();
+        while (r.Read()) list.Add(MapCoin(r));
+        return list;
+    }
+
     public List<Coin> ListByAlbum(string albumName, int pageNo)
     {
         using var conn = Open();

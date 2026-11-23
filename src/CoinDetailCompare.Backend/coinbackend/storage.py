@@ -85,6 +85,10 @@ class Storage:
     def heatmap_image_path(self, coin_id: int, side: str) -> Path:
         return self.cfg.coimg_dir / f"{coin_id}_{side}_heatmap.png"
 
+    def normalized_path(self, coin_id: int, side: str) -> Path:
+        """Canonical-frame image: coin centered, rotation normalized to the etalon."""
+        return self.cfg.coimg_dir / f"{coin_id}_{side}_norm.png"
+
     def heatmap_matrix_path(self, coin_id: int, side: str) -> Path:
         return self.cfg.coimg_dir / f"{coin_id}_{side}_heatmap.npy"
 

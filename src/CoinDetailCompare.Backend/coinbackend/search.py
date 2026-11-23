@@ -125,6 +125,17 @@ class SearchEngine:
         self.obverse = _Index(cfg.embedding_dim)
         self.reverse = _Index(cfg.embedding_dim)
         self._try_load()
+        self._sync_with_disk()
+
+    def _sync_with_disk(self) -> None:
+        """Rebuild from disk if the persisted in-memory index is stale
+        (e.g. fewer vectors than .npy files on disk after coins were added)."""
+        for side in _SIDES:
+            disk_ids = {cid for cid, _ in self.storage.iter_vectors(side)}
+            idx = self.obverse if side == "obverse" else self.reverse
+            if disk_ids and disk_ids != set(idx.ids):
+                self.rebuild_from_disk()
+                break
 
     def _try_load(self) -> None:
         paths = self.storage.index_files()

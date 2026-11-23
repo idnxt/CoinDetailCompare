@@ -98,6 +98,8 @@ class DinoV3Embedder(BaseEmbedder):
     def embed_image(self, img: "np.ndarray") -> np.ndarray:
         tensor = _to_tensor_bgr(img, self.model.device)
         feats = self.model.embed(tensor)  # [1, D]
+        if hasattr(feats, "cpu"):  # CUDA tensor -> host before numpy
+            feats = feats.detach().cpu()
         vec = np.asarray(feats, dtype="float32").reshape(-1)
         return _l2(vec)
 

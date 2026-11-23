@@ -10,6 +10,13 @@
         <Border DockPanel.Dock="Bottom" Background="#FF2B2E33" Padding="10,6">
             <DockPanel>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Button Content="{Binding CatalogTitle, Source={StaticResource Strings}}"
+                            Command="{Binding OpenCatalogCommand}"
+                            Margin="0,0,10,0" />
+                    <Button Content="GPU"
+                            Command="{Binding SetupGpuCommand}"
+                            ToolTip="{Binding GpuSetupTitle, Source={StaticResource Strings}}"
+                            Margin="0,0,10,0" />
                     <TextBlock Text="{Binding StatusLanguage, Source={StaticResource Strings}}"
                                Foreground="#FFF0F0F0" VerticalAlignment="Center" Margin="0,0,6,0" />
                     <ComboBox Width="60" VerticalAlignment="Center"
@@ -151,11 +158,64 @@
                                 <Image Source="{Binding HeatmapImage}" Stretch="Uniform"
                                        Opacity="0.55"
                                        Visibility="{Binding ShowHeatmap, Converter={StaticResource BoolToVis}}" />
+                                <!-- Diff layer: red map of where the normalized coin
+                                     differs from the etalon (from /compare). -->
+                                <Image Source="{Binding DiffImage}" Stretch="Uniform"
+                                       Opacity="0.75"
+                                       Visibility="{Binding ShowDiff, Converter={StaticResource BoolToVis}}" />
                             </Grid>
                         </StackPanel>
                         <StackPanel Grid.Column="1" Margin="8,0,0,0">
                             <TextBlock Text="{Binding CompareBase, Source={StaticResource Strings}}" FontWeight="SemiBold" />
                             <Image Source="{Binding EtalonImage}" Stretch="Uniform" />
+                            <!-- Etalon candidates (after "find similar"): click one to swap it in. -->
+                            <TextBlock Text="{Binding CompareCandidates, Source={StaticResource Strings}}"
+                                       FontWeight="SemiBold" Margin="0,8,0,2"
+                                       ToolTip="{Binding CompareCandidateHint, Source={StaticResource Strings}}"
+                                       Visibility="{Binding HasEtalonCandidates, Converter={StaticResource BoolToVis}}" />
+                            <ScrollViewer MaxHeight="150" VerticalScrollBarVisibility="Auto"
+                                          Visibility="{Binding HasEtalonCandidates, Converter={StaticResource BoolToVis}}">
+                                <ItemsControl ItemsSource="{Binding EtalonCandidates}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button Style="{StaticResource Btn}" HorizontalAlignment="Left"
+                                                    Margin="0,0,0,4"
+                                                    Command="{Binding DataContext.SwapEtalonCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                    CommandParameter="{Binding}">
+                                                <TextBlock Text="{Binding Label}" />
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                            <!-- 2-D projection of the search vectors (query vs etalons) -->
+                            <TextBlock Text="{Binding CompareVector, Source={StaticResource Strings}}"
+                                       FontWeight="SemiBold" Margin="0,8,0,2"
+                                       ToolTip="{Binding CompareVectorHint, Source={StaticResource Strings}}"
+                                       Visibility="{Binding HasVectorPoints, Converter={StaticResource BoolToVis}}" />
+                            <Border Background="#FF191A1E" CornerRadius="4" Padding="2"
+                                    Visibility="{Binding HasVectorPoints, Converter={StaticResource BoolToVis}}">
+                                <Canvas Width="260" Height="160" HorizontalAlignment="Left">
+                                    <ItemsControl ItemsSource="{Binding VectorPoints}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <Canvas />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Canvas.Left="{Binding Left}" Canvas.Top="{Binding Top}"
+                                                      Background="Transparent">
+                                                    <Ellipse Width="10" Height="10" Fill="{Binding Fill}" />
+                                                    <TextBlock Text="{Binding Label}" FontSize="11"
+                                                               Foreground="#FFF0F0F0"
+                                                               Margin="12,0,0,0" VerticalAlignment="Center" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </Canvas>
+                            </Border>
                         </StackPanel>
                     </Grid>
 
@@ -214,6 +274,8 @@
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <Button Grid.Column="0" Style="{StaticResource Btn}" Content="{Binding CompareSwap, Source={StaticResource Strings}}"
@@ -229,7 +291,10 @@
                             <CheckBox Grid.Column="4" VerticalAlignment="Center" Margin="0,0,12,0"
                                       Content="{Binding CompareHeatmap, Source={StaticResource Strings}}"
                                       IsChecked="{Binding ShowHeatmap}" />
-                            <CheckBox Grid.Column="5" VerticalAlignment="Center"
+                            <CheckBox Grid.Column="5" VerticalAlignment="Center" Margin="0,0,12,0"
+                                      Content="{Binding CompareDiff, Source={StaticResource Strings}}"
+                                      IsChecked="{Binding ShowDiff}" />
+                            <CheckBox Grid.Column="6" VerticalAlignment="Center"
                                       Content="{Binding CompareLayer, Source={StaticResource Strings}}"
                                       IsChecked="{Binding ShowAnnotations}" />
                         </Grid>

@@ -15,13 +15,16 @@
 
         <!-- ===== Left: live viewfinder (9:9) ===== -->
         <Grid Grid.Column="0" Background="#FF000000">
-            <!-- Full frame; the viewfinder shows its center (scale to cover, crop sides). -->
-            <Image x:Name="LiveImage" Stretch="UniformToFill" />
-            <!-- Green coin template circle, scales with the viewfinder. -->
-            <!-- Fixed logical canvas 1000x1000; Viewbox scales it to the viewfinder.
-                 Margin 2.5 on each side => the circle spans 95% of the square. -->
+            <!-- Square stage (1000x1000 logical), scaled uniformly to fit the
+                 cell and centered. The live image and the template circle
+                 live in the SAME coordinate space, so the circle is always
+                 exactly over the crop center (PumpFrame center-crops the
+                 frame to a square). ClipToBounds keeps the image inside the
+                 stage so it never bleeds into the right panel. -->
             <Viewbox IsHitTestVisible="False">
-                <Grid Width="1000" Height="1000">
+                <Grid Width="1000" Height="1000" ClipToBounds="True">
+                    <Image x:Name="LiveImage" Stretch="Fill" />
+                    <!-- Green coin template circle: 95% of the square stage. -->
                     <Ellipse Margin="2.5"
                              Stroke="#FF00E676" StrokeThickness="6"
                              Fill="#3300E676" />

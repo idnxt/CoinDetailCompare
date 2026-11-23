@@ -120,9 +120,68 @@ class AnomalyResponse(BaseModel):
     score: float
     heatmap_path: str | None = None
     heatmap_matrix_path: str | None = None
+    # Rotation-normalized query image (canonical frame), if persisted.
+    normalized_path: str | None = None
     heatmap_size: int
     bounding_boxes: list[BoundingBox] = Field(default_factory=list)
     top_patches: list[TopPatch] = Field(default_factory=list)
+    error: str | None = None
+
+
+class CompareRequest(BaseModel):
+    """Comparison layer: query coin vs a chosen etalon candidate."""
+    crop_path: str
+    side: str = "obverse"
+    etalon_coin_id: int
+    # When known, normalized/diff files are persisted under this coin id.
+    coin_id: int | None = None
+    # Extra etalon coin ids (the whole candidate list) for the 2-D vector
+    # projection; the primary etalon is always included.
+    candidate_ids: list[int] = Field(default_factory=list)
+
+
+class VectorPoint(BaseModel):
+    x: float
+    y: float
+    label: str
+    is_query: bool = False
+
+
+class CompareResponse(BaseModel):
+    ok: bool
+    normalized_path: str | None = None
+    diff_path: str | None = None
+    mean_diff: float = 0.0
+    rotation_deg: float = 0.0
+    points: list[VectorPoint] = Field(default_factory=list)
+    error: str | None = None
+
+
+class VectorProjectRequest(BaseModel):
+    """2-D projection of a single coin's search vector (plus other coins,
+    explicitly listed or all coins that have a vector for that side)."""
+    coin_id: int
+    side: str = "obverse"
+    other_ids: list[int] = Field(default_factory=list)
+
+
+class VectorProjectResponse(BaseModel):
+    ok: bool
+    points: list[VectorPoint] = Field(default_factory=list)
+    error: str | None = None
+
+
+class VectorRegenRequest(BaseModel):
+    coin_id: int
+    # None -> every side that has a stored photo
+    side: str | None = None
+
+
+class VectorRegenResponse(BaseModel):
+    ok: bool
+    coin_id: int
+    sides: list[str] = Field(default_factory=list)
+    dim: int | None = None
     error: str | None = None
 
 

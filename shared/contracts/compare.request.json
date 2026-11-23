@@ -1,0 +1,7 @@
+{
+  "crop_path": "E:/CoinDetailCompare/coimg/9001_obverse.png",
+  "side": "obverse",
+  "etalon_coin_id": 9002,
+  "coin_id": 9001,
+  "candidate_ids": [9002, 9003, 9004]
+}

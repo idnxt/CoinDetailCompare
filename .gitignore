@@ -45,3 +45,4 @@ obj/
 .env.local
 *.apikey
 numista_apikey.txt
+tools/rotation-diag/

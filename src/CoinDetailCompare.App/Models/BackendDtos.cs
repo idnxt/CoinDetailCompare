@@ -94,9 +94,49 @@ public record AnomalyResponse(
     double score,
     string? heatmap_path,
     string? heatmap_matrix_path,
+    string? normalized_path,
     int heatmap_size,
     List<BoundingBoxDto> bounding_boxes,
     List<TopPatchDto> top_patches,
+    string? error);
+
+public record CompareRequest(
+    string crop_path,
+    string side,
+    int etalon_coin_id,
+    int? coin_id,
+    List<int> candidate_ids);
+
+public record VectorPointDto(double x, double y, string label, bool is_query);
+
+public record CompareResponse(
+    bool ok,
+    string? normalized_path,
+    string? diff_path,
+    double mean_diff,
+    double rotation_deg,
+    List<VectorPointDto> points,
+    string? error);
+
+public record VectorProjectRequest(
+    int coin_id,
+    string side,
+    List<int> other_ids);
+
+public record VectorProjectResponse(
+    bool ok,
+    List<VectorPointDto> points,
+    string? error);
+
+public record VectorRegenRequest(
+    int coin_id,
+    string? side);
+
+public record VectorRegenResponse(
+    bool ok,
+    int coin_id,
+    List<string> sides,
+    int? dim,
     string? error);
 
 public record ReferenceItemDto(string kind, string? code, string? ru, string? en);

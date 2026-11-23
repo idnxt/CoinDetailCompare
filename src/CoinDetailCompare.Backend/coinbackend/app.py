@@ -13,6 +13,8 @@ from .config import Config
 from .contracts import (
     AnomalyRequest,
     AnomalyResponse,
+    CompareRequest,
+    CompareResponse,
     EmbedRequest,
     EmbedResponse,
     EmbedSideResult,
@@ -23,6 +25,11 @@ from .contracts import (
     SearchRequest,
     SearchResponse,
     Side,
+    VectorPoint,
+    VectorProjectRequest,
+    VectorProjectResponse,
+    VectorRegenRequest,
+    VectorRegenResponse,
 )
 from .embed import get_embedder
 from .numista import NumistaClient, parse_manual_numista_link
@@ -44,10 +51,14 @@ def create_app() -> FastAPI:
 
     @app.get("/health")
     def health():
+        # Report the device the embedder *actually* runs on (verified by a
+        # real CUDA probe at load time), not the configured wish.
+        model = getattr(EMBEDDER, "model", None)
+        device = str(model.device) if model is not None else "cpu"
         return {
             "status": "ok",
             "version": __version__,
-            "device": CONFIG.device,
+            "device": device,
             "model": CONFIG.model,
             "embedding_dim": EMBEDDER.dim,
             "embedder": type(EMBEDDER).__name__,
@@ -173,9 +184,116 @@ def create_app() -> FastAPI:
                 is_anomaly=False, score=0.0, heatmap_size=req.heatmap_size, error=str(exc)
             )
 
+    @app.post("/compare", response_model=CompareResponse)
+    def compare_endpoint(req: CompareRequest):
+        """Rotation-aligned diff layer (query vs etalon) + 2-D vector projection."""
+        from .diffmap import aligned_pair, back_to_query, diff_image, project_2d
+
+        try:
+            query = _read_bgr(req.crop_path)
+            etalon_path = STORAGE.photo_path(req.etalon_coin_id, req.side)
+            etalon = _read_bgr(str(etalon_path))
+
+            qn, rc, deg, m_q = aligned_pair(query, etalon)
+            norm_path, diff_path = None, None
+            mean = 0.0
+            if req.coin_id is not None:
+                norm_path = STORAGE.normalized_path(req.coin_id, req.side)
+                diff_path = STORAGE.cfg.coimg_dir / f"{req.coin_id}_{req.side}_diff.png"
+                _write_bgr(norm_path, qn)
+                out, mean = diff_image(qn, rc)
+                # Put the layer back in the raw query frame so the UI overlay
+                # covers the whole displayed coin (see back_to_query).
+                hq, wq = query.shape[:2]
+                _write_bgr(diff_path, back_to_query(out, m_q, (wq, hq)))
+
+            # 2-D projection of the search vectors: query + etalon candidates.
+            ids = list(dict.fromkeys([req.etalon_coin_id, *req.candidate_ids]))
+            vectors: list[np.ndarray] = [EMBEDDER.embed_image(query)]
+            labels: list[str] = ["query"]
+            is_query: list[bool] = [True]
+            for cid in ids:
+                vpath = STORAGE.vector_path(cid, req.side)
+                vec = (
+                    np.load(str(vpath))
+                    if vpath.exists()
+                    else EMBEDDER.embed_image(_read_bgr(str(STORAGE.photo_path(cid, req.side))))
+                )
+                vectors.append(vec)
+                labels.append(f"#{cid}")
+                is_query.append(False)
+            pts = project_2d(vectors)
+            points = [
+                VectorPoint(x=round(px, 4), y=round(py, 4), label=lab, is_query=q)
+                for (px, py), lab, q in zip(pts, labels, is_query)
+            ]
+            return CompareResponse(
+                ok=True,
+                normalized_path=str(norm_path) if norm_path else None,
+                diff_path=str(diff_path) if diff_path else None,
+                mean_diff=round(mean, 4),
+                rotation_deg=round(deg, 2),
+                points=points,
+            )
+        except Exception as exc:
+            return CompareResponse(ok=False, mean_diff=0.0, error=str(exc))
+
     @app.post("/index/rebuild")
     def rebuild_index():
         return SEARCH.rebuild_from_disk()
+
+    @app.post("/vector/project", response_model=VectorProjectResponse)
+    def vector_project_endpoint(req: VectorProjectRequest):
+        """2-D projection of one coin's own search vector, shown against the
+        other coins (explicit ids, or all coins that have a vector for the side)."""
+        from .diffmap import project_2d
+
+        try:
+            vectors = [_load_vector(req.coin_id, req.side)]
+            labels = [f"#{req.coin_id}"]
+            is_query = [True]
+            ids = [i for i in dict.fromkeys(req.other_ids) if i != req.coin_id]
+            if not ids:
+                # no explicit set: every other coin with a vector for this side
+                ids = [cid for cid, _ in STORAGE.iter_vectors(req.side) if cid != req.coin_id][:49]
+            for cid in ids:
+                try:
+                    vectors.append(_load_vector(cid, req.side))
+                    labels.append(f"#{cid}")
+                    is_query.append(False)
+                except Exception:
+                    continue  # coin without photo/vector is simply skipped
+            pts = project_2d(vectors)
+            return VectorProjectResponse(ok=True, points=[
+                VectorPoint(x=round(px, 4), y=round(py, 4), label=lab, is_query=q)
+                for (px, py), lab, q in zip(pts, labels, is_query)
+            ])
+        except Exception as exc:
+            return VectorProjectResponse(ok=False, error=str(exc))
+
+    @app.post("/vector/regenerate", response_model=VectorRegenResponse)
+    def vector_regenerate_endpoint(req: VectorRegenRequest):
+        """Re-embed the stored photo(s) of a coin, replace its .npy vector and
+        refresh the FAISS entry (an etalon has no heatmap to rebuild, but it
+        always has a vector)."""
+        sides = [req.side] if req.side else ("obverse", "reverse")
+        done: list[str] = []
+        dim = None
+        for side in sides:
+            photo = STORAGE.photo_path(req.coin_id, side)
+            if not photo.exists():
+                continue
+            img = _read_bgr(str(photo))
+            vec = EMBEDDER.embed_image(img)
+            vpath = STORAGE.vector_path(req.coin_id, side)
+            np.save(str(vpath), vec.astype("float32"))
+            SEARCH.add_vector(req.coin_id, side, vec)
+            done.append(side)
+            dim = int(vec.shape[0])
+        SEARCH.persist()
+        if not done:
+            return VectorRegenResponse(ok=False, coin_id=req.coin_id, error="no stored photos")
+        return VectorRegenResponse(ok=True, coin_id=req.coin_id, sides=done, dim=dim)
 
     @app.post("/numista/search", response_model=NumistaSearchResponse)
     def numista_search_endpoint(req: NumistaSearchRequest):
@@ -238,6 +356,14 @@ def _coin_row(coin_id: int):
         cur = con.execute("SELECT * FROM coin WHERE id = ?", (coin_id,))
         row = cur.fetchone()
         return dict(row) if row else None
+
+
+def _load_vector(coin_id: int, side: str) -> "np.ndarray":
+    """Saved .npy vector of a coin, or a fresh embedding from its stored photo."""
+    vpath = STORAGE.vector_path(coin_id, side)
+    if vpath.exists():
+        return np.load(str(vpath))
+    return EMBEDDER.embed_image(_read_bgr(str(STORAGE.photo_path(coin_id, side))))
 
 
 def _read_bgr(path: str):

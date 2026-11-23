@@ -1,0 +1,189 @@
+<Window x:Class="CoinDetailCompare.App.Views.CoinCardWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:CoinDetailCompare.App.Controls"
+        Title="Coin card"
+        Width="1080" Height="660"
+        WindowStartupLocation="CenterScreen">
+    <Grid Margin="12">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="340" />
+        </Grid.ColumnDefinitions>
+
+        <!-- ===== Left: coin layers (same composition as during photo) ===== -->
+        <Border Grid.Column="0" Style="{StaticResource Card}" Margin="0,0,8,0">
+            <StackPanel>
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Style="{StaticResource Btn}" Margin="0"
+                            Content="{Binding CompareSwap, Source={StaticResource Strings}}"
+                            Command="{Binding SwapSideCommand}"
+                            IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}" />
+                    <TextBlock Style="{StaticResource Title}" Text="{Binding SideName}" />
+                </DockPanel>
+
+                <!-- layer toggles -->
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                    <CheckBox Content="{Binding CompareHeatmap, Source={StaticResource Strings}}"
+                              IsChecked="{Binding ShowHeatmap}" VerticalAlignment="Center" Margin="0,0,12,0"
+                              IsEnabled="{Binding IsBase, Converter={StaticResource InverseBool}}" />
+                    <CheckBox Content="{Binding CompareDiff, Source={StaticResource Strings}}"
+                              IsChecked="{Binding ShowDiff}" VerticalAlignment="Center" Margin="0,0,12,0" />
+                    <CheckBox Content="{Binding CardAnnotations, Source={StaticResource Strings}}"
+                              IsChecked="{Binding ShowAnnotations}" VerticalAlignment="Center" />
+                </StackPanel>
+
+                <!-- base photo + overlays -->
+                <Grid>
+                    <Image Source="{Binding BaseImage}" Stretch="Uniform" />
+                    <controls:AnnotationCanvas Items="{Binding AnnotationItems}"
+                                               Tool="{Binding AnnotationTool}"
+                                               Color="#FFFF3030"
+                                               Visibility="{Binding ShowAnnotations, Converter={StaticResource BoolToVis}}" />
+                    <Image Source="{Binding HeatmapImage}" Stretch="Uniform"
+                           Opacity="0.55"
+                           Visibility="{Binding ShowHeatmap, Converter={StaticResource BoolToVis}}" />
+                    <Image Source="{Binding DiffImage}" Stretch="Uniform"
+                           Opacity="0.75"
+                           Visibility="{Binding ShowDiff, Converter={StaticResource BoolToVis}}" />
+                </Grid>
+
+                <TextBlock Text="{Binding AnomalyStatus}" Margin="0,8,0,0" TextWrapping="Wrap" />
+                <Button Style="{StaticResource Btn}" Margin="0,8,0,0"
+                        Content="{Binding AnomalyCheck, Source={StaticResource Strings}}"
+                        Command="{Binding RunAnomalyCommand}"
+                        IsEnabled="{Binding Blocked, Converter={StaticResource InverseBool}}" />
+                <Button Style="{StaticResource Btn}"
+                        Content="{Binding CardRunCompare, Source={StaticResource Strings}}"
+                        Command="{Binding RunCompareCommand}"
+                        IsEnabled="{Binding Blocked, Converter={StaticResource InverseBool}}" />
+                <Button Style="{StaticResource Btn}"
+                        Content="{Binding CardRegenVector, Source={StaticResource Strings}}"
+                        Command="{Binding RegenerateVectorCommand}"
+                        IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}" />
+
+                <!-- 2-D vector projection -->
+                <TextBlock Text="{Binding CompareVector, Source={StaticResource Strings}}"
+                           FontWeight="SemiBold" Margin="0,12,0,2"
+                           ToolTip="{Binding CompareVectorHint, Source={StaticResource Strings}}"
+                           Visibility="{Binding HasVectorPoints, Converter={StaticResource BoolToVis}}" />
+                <Border Background="#FF191A1E" CornerRadius="4" Padding="2"
+                        Visibility="{Binding HasVectorPoints, Converter={StaticResource BoolToVis}}">
+                    <Canvas Width="260" Height="160" HorizontalAlignment="Left">
+                        <ItemsControl ItemsSource="{Binding VectorPoints}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <Canvas />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Canvas.Left="{Binding Left}" Canvas.Top="{Binding Top}"
+                                          Background="Transparent">
+                                        <Ellipse Width="10" Height="10" Fill="{Binding Fill}" />
+                                        <TextBlock Text="{Binding Label}" FontSize="11"
+                                                   Foreground="#FFF0F0F0"
+                                                   Margin="12,0,0,0" VerticalAlignment="Center" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Canvas>
+                </Border>
+            </StackPanel>
+        </Border>
+
+        <!-- ===== Right: card attributes ===== -->
+        <Border Grid.Column="1" Style="{StaticResource Card}">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource Title}" Text="{Binding Header}" />
+                    <TextBlock Text="{Binding EtalonLabel}" Margin="0,0,0,8" TextWrapping="Wrap" />
+
+                    <TextBlock Text="{Binding KindLabel, Source={StaticResource Strings}}" Margin="0,6,0,2" />
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                        <RadioButton GroupName="CardKind" VerticalContentAlignment="Center"
+                                     Content="{Binding KindEtalon, Source={StaticResource Strings}}"
+                                     IsChecked="{Binding IsDuplicate, Converter={StaticResource InverseBool}}" />
+                        <RadioButton GroupName="CardKind" VerticalContentAlignment="Center" Margin="12,0,0,0"
+                                     Content="{Binding KindDuplicate, Source={StaticResource Strings}}"
+                                     IsChecked="{Binding IsDuplicate}" />
+                    </StackPanel>
+                    <CheckBox Content="{Binding KindAnomaly, Source={StaticResource Strings}}"
+                              IsChecked="{Binding IsAnomaly}" Margin="0,0,0,0" />
+
+                    <TextBlock Text="{Binding TypeName, Source={StaticResource Strings}}" Margin="0,6,0,2" />
+                    <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" />
+
+                    <Grid Margin="0,6,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Margin="0,0,6,0">
+                            <TextBlock Text="{Binding CaptureAlbum, Source={StaticResource Strings}}" />
+                            <TextBox Text="{Binding Album, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Margin="0,0,6,0">
+                            <TextBlock Text="{Binding CapturePage, Source={StaticResource Strings}}" />
+                            <TextBox Text="{Binding PageNo, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="{Binding CaptureOrder, Source={StaticResource Strings}}" />
+                            <TextBox Text="{Binding OrderNo, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                    </Grid>
+
+                    <Grid Margin="0,6,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Margin="0,0,6,0">
+                            <TextBlock Text="{Binding CatalogYear, Source={StaticResource Strings}}" />
+                            <TextBox Text="{Binding MintYear, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1">
+                            <TextBlock Text="{Binding CoinMint, Source={StaticResource Strings}}" />
+                            <TextBox Text="{Binding Mint, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                    </Grid>
+
+                    <TextBlock Text="{Binding CoinQuality, Source={StaticResource Strings}}" Margin="0,6,0,2" />
+                    <TextBox Text="{Binding Quality, UpdateSourceTrigger=PropertyChanged}" />
+
+                    <TextBlock Text="{Binding CoinAnomalyDesc, Source={StaticResource Strings}}" Margin="0,6,0,2" />
+                    <TextBox Text="{Binding AnomalyDesc, UpdateSourceTrigger=PropertyChanged}"
+                             TextWrapping="Wrap" AcceptsReturn="True" Height="56"
+                             VerticalScrollBarVisibility="Auto" />
+
+                    <Button Style="{StaticResource Btn}" Margin="0,12,0,0"
+                            Content="{Binding CardSave, Source={StaticResource Strings}}"
+                            Command="{Binding SaveCommand}"
+                            IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}" />
+
+                    <!-- annotation tools -->
+                    <TextBlock Style="{StaticResource Title}" Margin="0,16,0,8"
+                               Text="{Binding AnnotationSaveLayer, Source={StaticResource Strings}}" />
+                    <ComboBox ItemsSource="{Binding AnnotationToolItems}"
+                              SelectedItem="{Binding AnnotationToolName}" Margin="0,0,0,6" />
+                    <StackPanel Orientation="Horizontal">
+                        <Button Style="{StaticResource Btn}" Margin="0,0,6,0"
+                                Content="{Binding AnnotationUndo, Source={StaticResource Strings}}"
+                                Command="{Binding UndoAnnotationCommand}" />
+                        <Button Style="{StaticResource Btn}" Margin="0,0,6,0"
+                                Content="{Binding AnnotationClear, Source={StaticResource Strings}}"
+                                Command="{Binding ClearAnnotationsCommand}" />
+                        <Button Style="{StaticResource Btn}"
+                                Content="{Binding AnnotationSaveLayer, Source={StaticResource Strings}}"
+                                Command="{Binding SaveAnnotationsCommand}" />
+                    </StackPanel>
+
+                    <TextBlock Text="{Binding Status}" Margin="0,12,0,0" TextWrapping="Wrap"
+                               Foreground="#FF555555" />
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+    </Grid>
+</Window>

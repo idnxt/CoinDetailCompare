@@ -36,6 +36,23 @@ public partial class CaptureWindow : Window
     {
         if (!_vm.TryGetCameraFrame(out var frame) || frame is null)
             return;
+
+        // The capture pipeline finds the coin at the *frame center*, so the
+        // viewfinder must show exactly that center. The live stage in the
+        // XAML is a square (1000x1000, rendered 1:1 via Stretch="Fill"), so
+        // center-crop the frame to a square: displayed center == frame
+        // center == template circle, no matter the frame or cell size.
+        var fw = frame.PixelWidth;
+        var fh = frame.PixelHeight;
+        if (fw > 0 && fh > 0)
+        {
+            int side = Math.Min(fw, fh);
+            LiveImage.Source = new CroppedBitmap(
+                frame,
+                new Int32Rect((fw - side) / 2, (fh - side) / 2, side, side));
+            return;
+        }
+
         LiveImage.Source = frame;
     }
 

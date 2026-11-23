@@ -36,6 +36,15 @@ public class BackendClient
     public async Task<AnomalyResponse?> AnomalyAsync(AnomalyRequest req)
         => await ContinueAsync<AnomalyResponse>(_http.PostAsJsonAsync("/anomaly", req, Opts));
 
+    public async Task<CompareResponse?> CompareAsync(CompareRequest req)
+        => await ContinueAsync<CompareResponse>(_http.PostAsJsonAsync("/compare", req, Opts));
+
+    public async Task<VectorProjectResponse?> ProjectVectorAsync(VectorProjectRequest req)
+        => await ContinueAsync<VectorProjectResponse>(_http.PostAsJsonAsync("/vector/project", req, Opts));
+
+    public async Task<VectorRegenResponse?> RegenerateVectorAsync(VectorRegenRequest req)
+        => await ContinueAsync<VectorRegenResponse>(_http.PostAsJsonAsync("/vector/regenerate", req, Opts));
+
     public async Task<NumistaSearchResponse?> NumistaSearchAsync(NumistaSearchRequest req)
         => await ContinueAsync<NumistaSearchResponse>(_http.PostAsJsonAsync("/numista/search", req, Opts));
 

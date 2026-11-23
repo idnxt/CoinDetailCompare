@@ -1,0 +1,13 @@
+{
+  "ok": true,
+  "normalized_path": "E:/CoinDetailCompare/coimg/9001_obverse_norm.png",
+  "diff_path": "E:/CoinDetailCompare/coimg/9001_obverse_diff.png",
+  "mean_diff": 0.1234,
+  "rotation_deg": 4.35,
+  "points": [
+    { "x": 0.51, "y": 0.48, "label": "query", "is_query": true },
+    { "x": 0.12, "y": 0.9, "label": "#9002", "is_query": false },
+    { "x": 0.87, "y": 0.22, "label": "#9003", "is_query": false }
+  ],
+  "error": null
+}

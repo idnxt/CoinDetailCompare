@@ -10,7 +10,6 @@ can be exercised end-to-end before the production detector is bound (Phase 4).
 """
 from __future__ import annotations
 
-import math
 from pathlib import Path
 
 import numpy as np
@@ -88,37 +87,86 @@ def _compose(a: "np.ndarray", b: "np.ndarray") -> "np.ndarray":
     return np.hstack((ab, t))
 
 
-def _estimate_rotation(a: "np.ndarray", b: "np.ndarray", coarse_deg: float = 3.0) -> float:
-    """Coarse-to-fine angle (deg) whose rotation of `a` best correlates with
-    `b`. Both inputs should already be scale/position aligned (canonical)."""
+def _estimate_rotation(
+    a: "np.ndarray",
+    b: "np.ndarray",
+    rim_offset: float = 0.10,
+    n_windows: int = 6,
+    coarse_deg: float = 10.0,
+) -> float:
+    """Coarse-to-fine angle (deg) to rotate `a` onto `b`.
+
+    Both images must already be in the canonical frame (coin centered, fixed
+    radius).  The whole coin disc is compared: a coarse 5-degree grid over
+    the full circle, then a 0.5-degree refine of the two best candidates,
+    then a 0.05-degree polish.  The background (outside the coin circle) is
+    masked out, so different photo backgrounds do not bias the match.
+
+    Matching the full design (not just a few rim marks) is what makes this
+    robust on real photos: rim-only matching produced spurious peaks up to
+    ~190 degrees off on near-symmetric reverse designs.
+
+    `rim_offset` / `n_windows` are kept for signature compatibility with the
+    former rim-circle implementation and are unused.
+    The returned angle is the one to pass to cv2.getRotationMatrix2D for `a`.
+    """
     cv2 = _cv2()
     s = 128
     a = cv2.resize(a, (s, s), interpolation=cv2.INTER_AREA)
     b = cv2.resize(b, (s, s), interpolation=cv2.INTER_AREA)
-    gb = cv2.cvtColor(b, cv2.COLOR_BGR2GRAY).astype("float32").ravel()
-    center = (s / 2.0, s / 2.0)
+    ga = cv2.cvtColor(a, cv2.COLOR_BGR2GRAY).astype("float32")
+    gb = cv2.cvtColor(b, cv2.COLOR_BGR2GRAY).astype("float32")
+
+    # Mask: the inner half of the coin disc in the canonical frame. The rim
+    # ring is deliberately excluded: Hough-circle radius estimates can be off
+    # by a few percent between frames, and with a full-disc mask that scale
+    # mismatch at the rim would dominate the NCC and shift the best angle.
+    # Matching the inner design (not just rim marks) is what keeps this
+    # robust on real photos.
+    mask = np.zeros((s, s), "float32")
+    cv2.circle(mask, (s // 2, s // 2), int(_CANONICAL_RADIUS * s / 2), 1.0, -1)
+
+    gb_c = (gb - gb.mean()) * mask
+    gb_den = float(np.sqrt((gb_c * gb_c).sum()))
 
     def score(deg: float) -> float:
-        m = cv2.getRotationMatrix2D(center, deg, 1.0)
-        ra = cv2.warpAffine(a, m, (s, s), flags=cv2.INTER_LINEAR)
-        ra = cv2.cvtColor(ra, cv2.COLOR_BGR2GRAY).astype("float32").ravel()
-        c = float(np.corrcoef(ra, gb)[0, 1])
-        return c if not math.isnan(c) else -1.0
+        # Rotate `a` by `deg` (same convention as getRotationMatrix2D) and
+        # measure masked NCC against `b`.
+        m = cv2.getRotationMatrix2D((s / 2.0, s / 2.0), deg, 1.0)
+        ra = cv2.warpAffine(ga, m, (s, s), flags=cv2.INTER_LINEAR, borderValue=0.0)
+        ra_c = (ra - ra.mean()) * mask
+        den = float(np.sqrt((ra_c * ra_c).sum())) * gb_den
+        return float((ra_c * gb_c).sum() / den) if den > 1e-9 else 0.0
 
-    best, best_s = 0.0, score(0.0)
-    deg = coarse_deg
-    while deg < 360.0:
-        sc = score(deg)
-        if sc > best_s:
-            best, best_s = deg, sc
-        deg += coarse_deg
-    d = best - coarse_deg
-    while d <= best + coarse_deg:
-        sc = score(d % 360.0)
-        if sc > best_s:
-            best, best_s = d % 360.0, sc
-        d += 0.25
-    return best
+    def _refine(center: float) -> tuple[float, float]:
+        # 0.5 deg steps over +/-coarse_deg around `center`, then 0.05 deg
+        # over the remaining +/-0.5 deg.
+        best, best_s = center, score(center)
+        d = center - coarse_deg
+        while d <= center + coarse_deg:
+            sc = score(d)
+            if sc > best_s:
+                best, best_s = d % 360.0, sc
+            d += 0.5
+        d = best - 0.5
+        while d <= best + 0.5:
+            sc = score(d)
+            if sc > best_s:
+                best, best_s = d % 360.0, sc
+            d += 0.05
+        return best, best_s
+
+    # Coarse pass over the whole circle (5 deg grid).  The score profile of
+    # a coin design can be multi-modal (near-symmetric patterns), so refine
+    # the two best coarse candidates and take the global winner.
+    coarse = [(d, score(d)) for d in range(0, 360, 5)]
+    coarse.sort(key=lambda t: t[1], reverse=True)
+    best, best_s = _refine(coarse[0][0])
+    if len(coarse) > 1 and coarse[1][0] != coarse[0][0]:
+        b2, s2 = _refine(coarse[1][0])
+        if s2 > best_s:
+            best, best_s = b2, s2
+    return best % 360.0
 
 
 class AnomalyDetector:
@@ -348,10 +396,14 @@ class AnomalyDetector:
         # against the best reference.
         q, total = _canonicalize(query, _detect_coin_circle(query))
 
+        # Rotation: align the query to the etalon (best reference) by
+        # full-disc NCC in the canonical frame (see _estimate_rotation).
+        # All bank references get the same treatment below.
         ref0 = self._first_reference_image(reference_ids, side)
+        ref0_canon = None
         if ref0 is not None:
-            r0, _ = _canonicalize(ref0, _detect_coin_circle(ref0))
-            ang = _estimate_rotation(q, r0)
+            ref0_canon, _ = _canonicalize(ref0, _detect_coin_circle(ref0))
+            ang = _estimate_rotation(q, ref0_canon)
             if abs(ang) > 0.1:
                 cq = (q.shape[1] / 2.0, q.shape[0] / 2.0)
                 rot = cv2.getRotationMatrix2D(cq, ang, 1.0)
@@ -361,7 +413,7 @@ class AnomalyDetector:
                 )
                 total = _compose(total, rot)
 
-        bank = self._build_memory_bank(reference_ids, side)
+        bank = self._build_memory_bank(reference_ids, side, ref0_canon)
         if len(bank) == 0:
             # No references: no reliable anomaly estimate.
             return {
@@ -420,6 +472,7 @@ class AnomalyDetector:
         # Persist heatmap
         heat_path = None
         heat_mat_path = None
+        norm_path = None
         if coin_id is not None:
             heat_mat = norm.astype("float32")
             heat_mat_path = str(self.storage.heatmap_matrix_path(coin_id, side))
@@ -427,6 +480,10 @@ class AnomalyDetector:
             heat_img = self._to_colormap(norm, query.shape)
             heat_path = str(self.storage.heatmap_image_path(coin_id, side))
             cv2.imwrite(heat_path, heat_img)
+            # Persist the normalized (rotation-aligned) coin so the UI can
+            # show the rotated version after comparison.
+            norm_path = str(self.storage.normalized_path(coin_id, side))
+            cv2.imwrite(norm_path, q)
 
         # Top anomalous patches (indices in the original crop frame)
         fh, fw = norm.shape
@@ -441,6 +498,7 @@ class AnomalyDetector:
             "score": round(image_score, 4),
             "heatmap_path": heat_path,
             "heatmap_matrix_path": heat_mat_path,
+            "normalized_path": norm_path,
             "heatmap_size": heatmap_size,
             "bounding_boxes": boxes,
             "top_patches": top,
@@ -458,7 +516,9 @@ class AnomalyDetector:
                 return img
         return None
 
-    def _build_memory_bank(self, reference_ids: list[int], side: str) -> list[np.ndarray]:
+    def _build_memory_bank(
+        self, reference_ids: list[int], side: str, ref0_canon: "np.ndarray | None" = None
+    ) -> list[np.ndarray]:
         import cv2  # type: ignore
 
         bank: list[np.ndarray] = []
@@ -469,6 +529,17 @@ class AnomalyDetector:
                 continue
             # Same canonical frame as the query: coin centered, fixed radius.
             img, _ = _canonicalize(img, _detect_coin_circle(img))
+            # Rotate to the etalon (ref0) orientation so every patch is
+            # compared in the same rotational frame (full-disc NCC).
+            if ref0_canon is not None:
+                ang = _estimate_rotation(img, ref0_canon)
+                if abs(ang) > 0.1:
+                    h, w = img.shape[:2]
+                    rot = cv2.getRotationMatrix2D((w / 2.0, h / 2.0), ang, 1.0)
+                    img = cv2.warpAffine(
+                        img, rot, (w, h),
+                        flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE,
+                    )
             # Sample a few patch features from the reference (4x4 grid:
             # 16 embeddings per reference — keeps CPU cost bounded).
             h, w = img.shape[:2]

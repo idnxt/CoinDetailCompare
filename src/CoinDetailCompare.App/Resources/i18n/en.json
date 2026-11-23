@@ -41,6 +41,12 @@
     "swap": "Swap comparison",
     "heatmap": "Heatmap",
     "layer": "Layer",
+    "candidates": "Etalon candidates",
+    "candidate_hint": "Click to make the selected variant the etalon",
+    "etalon_set": "Etalon: #{0} ({1}%)",
+    "diff": "Diff layer",
+    "vector": "Vectors (2D)",
+    "vector_hint": "Embedding projection: yellow — the current coin, blue — etalons",
     "annotation_hint": "Draw over the photo: line — drag, ellipse/arrow — from start to end."
   },
   "annotation": {
@@ -112,5 +118,42 @@
     "saved": "Coin saved",
     "error": "Error",
     "language": "Language"
+  },
+  "catalog": {
+    "title": "Coin catalog",
+    "refresh": "Refresh",
+    "count": "Coins: {0}",
+    "code": "Code (A.S.N)",
+    "kind": "Kind",
+    "name": "Name",
+    "year": "Year",
+    "edit": "Edit"
+  },
+  "kind": {
+    "label": "Kind (E/D/A)",
+    "etalon": "Etalon",
+    "duplicate": "Duplicate",
+    "anomaly": "Anomaly"
+  },
+  "card": {
+    "title": "Coin card №{0}",
+    "etalon": "Etalon: №{0}",
+    "no_etalon": "No etalon set",
+    "compare_done": "Mean diff {0:F2}, rotation {1:F1}°",
+    "save": "Save",
+    "annotations": "Annotations",
+    "run_compare": "Compare with etalon",
+    "regenerate_vector": "Regenerate vector",
+    "vector_recreated": "Vector recreated (dim {0})"
+  },
+  "gpu": {
+    "title": "GPU setup (torch cu128)",
+    "confirm": "GPU environment setup.\n\nThe following will be installed into {0} (if not present yet):\n{1}\n\nContinue?",
+    "sizes": "• Python — ~0.3 GB\n• PyTorch (cu128) + GPU libraries — ~2.5 GB\n• other backend libraries — ~0.2 GB\n\nTotal ~3 GB",
+    "starting": "Starting GPU setup…",
+    "restarting": "Setup done, restarting backend…",
+    "ready": "GPU ready, device: {0}",
+    "restart_failed": "Backend did not come back after restart",
+    "failed": "Setup failed"
   }
 }

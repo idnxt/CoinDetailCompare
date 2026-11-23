@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.IO;
+using System.IO.Compression;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using CoinDetailCompare.App.Controls;
@@ -48,8 +49,17 @@ public class MainViewModel : ObservableObject
     private ImageSource? _compareImage;
     private string? _etalonObversePath;
     private string? _etalonReversePath;
+    private List<EtalonCandidate> _etalonCandidates = new();
+    private bool _hasEtalonCandidates;
     private bool _showHeatmap = true;
     private bool _showAnnotations = true;
+
+    // ---- comparison layer (diff map + vector projection) ----
+    private ImageSource? _diffImage;
+    private bool _showDiff = true;
+    private List<VectorPointItem> _vectorPoints = new();
+    private bool _hasVectorPoints;
+    private int? _etalonCoinId;
 
     // ---- anomaly / heatmap ----
     private ImageSource? _heatmapImage;
@@ -98,6 +108,8 @@ public class MainViewModel : ObservableObject
         SwapSidesCommand = new RelayCommand(SwapSides);
         SwapCompareCommand = new RelayCommand(SwapCompare);
         SearchCommand = new RelayCommand(async () => await SearchAsync());
+        SwapEtalonCommand = new RelayCommand<EtalonCandidate>(SwapEtalon);
+        SetupGpuCommand = new RelayCommand(async () => await SetupGpuAsync());
         SaveMatchCommand = new RelayCommand(async () => await SaveAsync(SourceKind.Match));
         SaveDuplicateCommand = new RelayCommand(async () => await SaveAsync(SourceKind.Duplicate));
         SaveVariantCommand = new RelayCommand(async () => await SaveAsync(SourceKind.Variant));
@@ -121,6 +133,7 @@ public class MainViewModel : ObservableObject
         UndoAnnotationCommand = new RelayCommand(UndoAnnotation);
         ClearAnnotationsCommand = new RelayCommand(ClearAnnotations);
         SaveAnnotationsCommand = new RelayCommand(async () => await SaveAnnotationsAsync());
+        OpenCatalogCommand = new RelayCommand(OpenCatalog);
 
         _ = LoadReferencesAsync();
     }
@@ -142,6 +155,7 @@ public class MainViewModel : ObservableObject
     public CoinSide CompareSide { get => _compareSide; private set => SetProperty(ref _compareSide, value); }
     public ImageSource? CompareImage { get => _compareImage; private set => SetProperty(ref _compareImage, value); }
     public bool ShowHeatmap { get => _showHeatmap; set => SetProperty(ref _showHeatmap, value); }
+    public bool ShowDiff { get => _showDiff; set => SetProperty(ref _showDiff, value); }
     public bool ShowAnnotations { get => _showAnnotations; set => SetProperty(ref _showAnnotations, value); }
 
     public string? ObversePath => _obversePath;
@@ -156,6 +170,22 @@ public class MainViewModel : ObservableObject
     public string NumistaLink { get => _numistaLink; set => SetProperty(ref _numistaLink, value); }
     public int? CurrentCoinId => _currentCoinId;
 
+    // ---- etalon candidates (result of "find similar") ----
+    public List<EtalonCandidate> EtalonCandidates
+    {
+        get => _etalonCandidates;
+        private set
+        {
+            SetProperty(ref _etalonCandidates, value);
+            HasEtalonCandidates = value is { Count: > 0 };
+        }
+    }
+    public bool HasEtalonCandidates
+    {
+        get => _hasEtalonCandidates;
+        private set => SetProperty(ref _hasEtalonCandidates, value);
+    }
+
     // ---- attribute editing properties ----
     public string MintYear { get => _mintYear; set => SetProperty(ref _mintYear, value); }
     public string Mint { get => _mint; set => SetProperty(ref _mint, value); }
@@ -165,6 +195,23 @@ public class MainViewModel : ObservableObject
     public ObservableCollection<string> OrientationItems { get; } = new();
     public TypeEditor TypeEditor { get; } = new();
     public bool TypeLoaded => TypeEditor.Id > 0;
+
+    // ---- comparison layer (diff image + 2-D vector projection) ----
+    public ImageSource? DiffImage { get => _diffImage; private set => SetProperty(ref _diffImage, value); }
+    public List<VectorPointItem> VectorPoints
+    {
+        get => _vectorPoints;
+        private set
+        {
+            SetProperty(ref _vectorPoints, value);
+            HasVectorPoints = value is { Count: > 0 };
+        }
+    }
+    public bool HasVectorPoints
+    {
+        get => _hasVectorPoints;
+        private set => SetProperty(ref _hasVectorPoints, value);
+    }
 
     // ---- anomaly / heatmap ----
     public ImageSource? HeatmapImage { get => _heatmapImage; private set => SetProperty(ref _heatmapImage, value); }
@@ -267,6 +314,8 @@ public class MainViewModel : ObservableObject
     public RelayCommand SwapSidesCommand { get; }
     public RelayCommand SwapCompareCommand { get; }
     public RelayCommand SearchCommand { get; }
+    public RelayCommand<EtalonCandidate> SwapEtalonCommand { get; }
+    public RelayCommand SetupGpuCommand { get; }
     public RelayCommand SaveMatchCommand { get; }
     public RelayCommand SaveDuplicateCommand { get; }
     public RelayCommand SaveVariantCommand { get; }
@@ -289,6 +338,7 @@ public class MainViewModel : ObservableObject
     public RelayCommand SaveAnnotationsCommand { get; }
     public RelayCommand ValidateNumistaCommand { get; }
     public RelayCommand ApplyNumistaItemCommand { get; }
+    public RelayCommand OpenCatalogCommand { get; }
 
     public string T(string key) => _loc.T(key);
 
@@ -666,10 +716,15 @@ public class MainViewModel : ObservableObject
                 _etalonObversePath = top.etalon_photo.obverse;
                 _etalonReversePath = top.etalon_photo.reverse;
                 RefreshCompareImages();
+                EtalonCandidates = BuildCandidates(resp.candidates);
+                _etalonCoinId = top.coin_id;
                 Status = $"top match: {top.coin_id} ({top.overall_pct:F1}%)";
+                _ = RunCompareAsync();
             }
             else
             {
+                EtalonCandidates = new List<EtalonCandidate>();
+                _etalonCoinId = null;
                 Status = T("actions.not_determined");
             }
         }
@@ -690,6 +745,284 @@ public class MainViewModel : ObservableObject
         Status = T("actions.swap_sides");
     }
 
+    /// <summary>Maps search results to the etalon-candidate list model:
+    /// sorted by overall match, up to 5 entries, numbered 1..5 (1 = closest).</summary>
+    private List<EtalonCandidate> BuildCandidates(List<CandidateDto> candidates)
+    {
+        return candidates
+            .Where(c => c.etalon_photo is not null &&
+                        (c.etalon_photo.obverse is not null || c.etalon_photo.reverse is not null))
+            .OrderByDescending(c => c.overall_pct)
+            .Take(5)
+            .Select((c, i) => new EtalonCandidate
+            {
+                CoinId = c.coin_id,
+                TypeId = c.type_id,
+                Quality = c.quality,
+                ObversePct = c.obverse_pct,
+                ReversePct = c.reverse_pct,
+                OverallPct = c.overall_pct,
+                Orientation = c.orientation,
+                EtalonObverse = c.etalon_photo.obverse,
+                EtalonReverse = c.etalon_photo.reverse,
+                Label = BuildCandidateLabel(i + 1, c),
+            })
+            .ToList();
+    }
+
+    /// <summary>Human-readable line: rank, record name, year, quality, match %.</summary>
+    private string BuildCandidateLabel(int rank, CandidateDto c)
+    {
+        var coin = _db.GetCoin(c.coin_id);
+        var name = c.type_id is int tid ? _db.GetCoinType(tid)?.Name : null;
+        if (string.IsNullOrWhiteSpace(name))
+            name = coin is not null && !string.IsNullOrWhiteSpace(coin.AlbumName)
+                ? $"{coin.AlbumName} p.{coin.PageNo} №{coin.OrderNo}"
+                : $"#{c.coin_id}";
+        var parts = new List<string> { $"{rank}." };
+        parts.Add(name!);
+        if (!string.IsNullOrWhiteSpace(coin?.MintYear)) parts.Add(coin!.MintYear!);
+        if (!string.IsNullOrWhiteSpace(c.quality)) parts.Add(c.quality!);
+        parts.Add($"{c.overall_pct:F1}%");
+        return string.Join(" · ", parts);
+    }
+
+    /// <summary>
+    /// Swaps the given candidate in as the etalon: its photos become the
+    /// comparison reference, the match percents / orientation are updated and
+    /// the coin-attributes panel loads the candidate's catalog record.
+    /// </summary>
+    private void SwapEtalon(EtalonCandidate? candidate)
+    {
+        if (candidate is null) return;
+        _etalonObversePath = candidate.EtalonObverse;
+        _etalonReversePath = candidate.EtalonReverse;
+        ObversePct = Math.Round(candidate.ObversePct, 1);
+        ReversePct = Math.Round(candidate.ReversePct, 1);
+        Orientation = candidate.Orientation;
+        _etalonCoinId = candidate.CoinId;
+        ApplyCoinAttributes(candidate.CoinId);
+        RefreshCompareImages();
+        Status = string.Format(T("compare.etalon_set"), candidate.CoinId, candidate.OverallPct.ToString("F1"));
+        _ = RunCompareAsync();
+    }
+
+    /// <summary>
+    /// Comparison layer for the active side against the current etalon:
+    /// rotation-aligned diff image (red overlay) plus the 2-D projection of
+    /// the search vectors (query coin + etalon candidates).
+    /// </summary>
+    private async Task RunCompareAsync()
+    {
+        var side = CompareSide == CoinSide.Obverse ? "obverse" : "reverse";
+        var crop = side == "obverse" ? _obversePath : _reversePath;
+        if (string.IsNullOrEmpty(crop) || _etalonCoinId is not int eid)
+        {
+            DiffImage = null;
+            VectorPoints = new List<VectorPointItem>();
+            return;
+        }
+        try
+        {
+            var resp = await _backend.CompareAsync(new CompareRequest(
+                crop_path: crop,
+                side: side,
+                etalon_coin_id: eid,
+                coin_id: _currentCoinId,
+                candidate_ids: EtalonCandidates.Select(c => c.CoinId).Distinct().ToList()));
+            if (resp is not { ok: true })
+            {
+                Status = $"{T("status.error")}: {resp?.error ?? "no response"}";
+                return;
+            }
+            DiffImage = resp.diff_path is not null && File.Exists(resp.diff_path)
+                ? LoadImage(resp.diff_path)
+                : null;
+            VectorPoints = resp.points.Select(p => new VectorPointItem
+            {
+                X = p.x,
+                Y = p.y,
+                Label = p.label,
+                IsQuery = p.is_query,
+            }).ToList();
+        }
+        catch (System.Exception ex)
+        {
+            Status = $"{T("status.error")}: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// In-app GPU setup: confirmation dialog (sizes, OK/Cancel), then runs
+    /// scripts/setup_gpu.py, which installs EVERYTHING into &lt;root&gt;/env —
+    /// full Python 3.12 into env/python (silent download+install if missing),
+    /// the venv env/venv with all requirements, and PyTorch (cu128 when the
+    /// NVIDIA driver is present). Streams the output to a log window, then
+    /// restarts the backend and reports the device from /health.
+    /// </summary>
+    private async Task SetupGpuAsync()
+    {
+        if (IsBusy) return;
+
+        var root = Path.GetFullPath(Path.Combine(_settings.CoimgDir, ".."));
+        var envDir = Path.Combine(root, "env");
+        var answer = System.Windows.MessageBox.Show(
+            string.Format(T("gpu.confirm"), envDir, T("gpu.sizes")),
+            T("app.title"),
+            System.Windows.MessageBoxButton.OKCancel,
+            System.Windows.MessageBoxImage.Information);
+        if (answer != System.Windows.MessageBoxResult.OK) return;
+
+        IsBusy = true;
+        GpuSetupWindow? win = null;
+        try
+        {
+            var py = await FindBootstrapPythonAsync(root, envDir);
+            var script = Path.Combine(root, "scripts", "setup_gpu.py");
+
+            win = new GpuSetupWindow { Owner = System.Windows.Application.Current?.MainWindow };
+            win.Show();
+            win.SetStatus(T("gpu.starting"));
+            win.AppendLine($"python: {py}");
+            Status = T("gpu.starting");
+
+            using var proc = new System.Diagnostics.Process
+            {
+                StartInfo = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = py,
+                    Arguments = $"\"{script}\"",
+                    WorkingDirectory = root,
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true,
+                },
+                EnableRaisingEvents = true,
+            };
+            void OnLine(object? sender, System.Diagnostics.DataReceivedEventArgs e)
+            {
+                if (e.Data is not null)
+                {
+                    try { win!.AppendLine(e.Data); } catch { /* window closed */ }
+                }
+            }
+            proc.OutputDataReceived += OnLine;
+            proc.ErrorDataReceived += OnLine;
+            proc.Start();
+            proc.BeginOutputReadLine();
+            proc.BeginErrorReadLine();
+            var exited = new TaskCompletionSource<bool>();
+            proc.Exited += (_, _) => exited.TrySetResult(true);
+            await exited.Task;
+            var code = proc.ExitCode;
+
+            if (code == 0)
+            {
+                Status = T("gpu.restarting");
+                try { win.SetStatus(T("gpu.restarting")); } catch { }
+                await RestartBackendAsync();
+                HealthDto? h = null;
+                for (var i = 0; i < 60; i++)
+                {
+                    await Task.Delay(2000);
+                    try { h = await _backend.HealthAsync(); } catch { h = null; }
+                    if (h is not null) break;
+                }
+                if (h is not null)
+                {
+                    Status = string.Format(T("gpu.ready"), h.device);
+                    try { win.SetStatus(Status); } catch { }
+                }
+                else
+                {
+                    Status = T("gpu.restart_failed");
+                    try { win.SetStatus(T("gpu.restart_failed")); } catch { }
+                }
+            }
+            else
+            {
+                Status = T("gpu.failed");
+                try { win.SetStatus(T("gpu.failed")); } catch { }
+            }
+        }
+        catch (System.Exception ex)
+        {
+            Status = $"{T("status.error")}: {ex.Message}";
+            try { win?.SetStatus(Status); } catch { }
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>Restarts the local backend via scripts/restart_backend.ps1.</summary>
+    private Task RestartBackendAsync()
+    {
+        var root = Path.GetFullPath(Path.Combine(_settings.CoimgDir, ".."));
+        var ps = Path.Combine(root, "scripts", "restart_backend.ps1");
+        var psi = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = "powershell",
+            Arguments = $"-NoProfile -ExecutionPolicy Bypass -File \"{ps}\" {_settings.BackendPort}",
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        var p = System.Diagnostics.Process.Start(psi);
+        return p is null ? Task.CompletedTask : p.WaitForExitAsync();
+    }
+
+    /// <summary>
+    /// Finds a python to run setup_gpu.py, in priority order:
+    /// env\python (installed by a previous run of the setup itself) →
+    /// backend .venv → python on PATH. If none exists, downloads a small
+    /// embeddable Python (~25 MB, stdlib only — enough to run the setup
+    /// script) into env\_bootstrap; the script then installs the full
+    /// Python into env\python.
+    /// </summary>
+    private async Task<string> FindBootstrapPythonAsync(string root, string envDir)
+    {
+        var envPy = Path.Combine(envDir, "python", "python.exe");
+        if (File.Exists(envPy)) return envPy;
+
+        var venvPy = Path.Combine(root, "src", "CoinDetailCompare.Backend", ".venv", "Scripts", "python.exe");
+        if (File.Exists(venvPy)) return venvPy;
+
+        try
+        {
+            var p = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+                "where.exe", "python")
+            {
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            });
+            if (p is not null)
+            {
+                var line = (await p.StandardOutput.ReadLineAsync())?.Trim();
+                await p.WaitForExitAsync();
+                if (!string.IsNullOrWhiteSpace(line) && File.Exists(line)) return line;
+            }
+        }
+        catch { /* no python on PATH */ }
+
+        const string zipUrl =
+            "https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip";
+        var dir = Path.Combine(envDir, "_bootstrap");
+        Directory.CreateDirectory(dir);
+        var zip = Path.Combine(dir, "python-embed.zip");
+        if (!File.Exists(zip))
+        {
+            using var http = new System.Net.Http.HttpClient();
+            using var stream = await http.GetStreamAsync(zipUrl);
+            using var fs = File.Create(zip);
+            await stream.CopyToAsync(fs);
+        }
+        ZipFile.ExtractToDirectory(zip, dir, overwriteFiles: true);
+        return Path.Combine(dir, "python.exe");
+    }
+
     /// <summary>
     /// Toggle the comparison side: obverse ↔ reverse. The photos of the
     /// current coin and the etalon, the heatmap and the saved annotation
@@ -701,6 +1034,15 @@ public class MainViewModel : ObservableObject
         RefreshCompareImages();
         LoadAnnotationLayer();
         Status = T("compare.swap");
+        _ = RunCompareAsync();
+    }
+
+    /// <summary>Open the saved-coins catalog window (non-modal).</summary>
+    private void OpenCatalog()
+    {
+        var win = new CoinDetailCompare.App.Views.CatalogWindow(_settings, _backend, _db, _loc);
+        win.Owner = System.Windows.Application.Current?.MainWindow;
+        win.Show();
     }
 
     /// <summary>Reload the photos (current + etalon) and heatmap for CompareSide.</summary>
@@ -986,6 +1328,9 @@ public class MainViewModel : ObservableObject
             HeatmapImage = resp.heatmap_path is not null && File.Exists(resp.heatmap_path)
                 ? LoadImage(resp.heatmap_path)
                 : TryLoadHeatmap();
+            // Show the rotation-normalized coin (aligned to the etalon).
+            if (resp.normalized_path is not null && File.Exists(resp.normalized_path))
+                CompareImage = LoadImage(resp.normalized_path);
         }
         catch (System.Exception ex)
         {

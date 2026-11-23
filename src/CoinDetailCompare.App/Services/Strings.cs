@@ -76,6 +76,12 @@ public class Strings : INotifyPropertyChanged
     public string CompareSwap => this["compare.swap"];
     public string CompareHeatmap => this["compare.heatmap"];
     public string CompareLayer => this["compare.layer"];
+    public string CompareCandidates => this["compare.candidates"];
+    public string CompareCandidateHint => this["compare.candidate_hint"];
+    public string CompareEtalonSet => this["compare.etalon_set"];
+    public string CompareDiff => this["compare.diff"];
+    public string CompareVector => this["compare.vector"];
+    public string CompareVectorHint => this["compare.vector_hint"];
     public string CompareAnnotationHint => this["compare.annotation_hint"];
 
     // annotation
@@ -147,4 +153,41 @@ public class Strings : INotifyPropertyChanged
     public string StatusSaved => this["status.saved"];
     public string StatusError => this["status.error"];
     public string StatusLanguage => this["status.language"];
+
+    // catalog
+    public string CatalogTitle => this["catalog.title"];
+    public string CatalogRefresh => this["catalog.refresh"];
+    public string CatalogCount => this["catalog.count"];
+    public string CatalogCode => this["catalog.code"];
+    public string CatalogKind => this["catalog.kind"];
+    public string CatalogName => this["catalog.name"];
+    public string CatalogYear => this["catalog.year"];
+    public string CatalogEdit => this["catalog.edit"];
+
+    // kind
+    public string KindLabel => this["kind.label"];
+    public string KindEtalon => this["kind.etalon"];
+    public string KindDuplicate => this["kind.duplicate"];
+    public string KindAnomaly => this["kind.anomaly"];
+
+    // card
+    public string CardTitle => this["card.title"];
+    public string CardEtalon => this["card.etalon"];
+    public string CardNoEtalon => this["card.no_etalon"];
+    public string CardCompareDone => this["card.compare_done"];
+    public string CardSave => this["card.save"];
+    public string CardAnnotations => this["card.annotations"];
+    public string CardRunCompare => this["card.run_compare"];
+    public string CardRegenVector => this["card.regenerate_vector"];
+    public string CardVectorRecreated => this["card.vector_recreated"];
+
+    // gpu
+    public string GpuSetupTitle => this["gpu.title"];
+    public string GpuConfirm => this["gpu.confirm"];
+    public string GpuSizes => this["gpu.sizes"];
+    public string GpuStarting => this["gpu.starting"];
+    public string GpuRestarting => this["gpu.restarting"];
+    public string GpuReady => this["gpu.ready"];
+    public string GpuRestartFailed => this["gpu.restart_failed"];
+    public string GpuFailed => this["gpu.failed"];
 }
