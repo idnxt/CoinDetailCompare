@@ -81,7 +81,9 @@ public record AnomalyRequest(
     List<int> reference_ids,
     int heatmap_size,
     double? threshold,
-    int? coin_id);
+    int? coin_id,
+    string? device = null,
+    int? patch_grid = null);
 
 public record BoundingBoxDto(double x, double y, double w, double h);
 

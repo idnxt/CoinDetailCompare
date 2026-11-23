@@ -1,0 +1,85 @@
+<Window x:Class="CoinDetailCompare.App.CaptureWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="{Binding CaptureWindowTitle, Source={StaticResource Strings}}"
+        Width="1040" Height="585"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        Background="#FF1E1F22">
+    <!-- 16:9 window. Left block is 9:9 (square viewfinder), right block is 7:9. -->
+    <Grid Margin="8">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="9*" />
+            <ColumnDefinition Width="7*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- ===== Left: live viewfinder (9:9) ===== -->
+        <Grid Grid.Column="0" Background="#FF000000">
+            <!-- Full frame; the viewfinder shows its center (scale to cover, crop sides). -->
+            <Image x:Name="LiveImage" Stretch="UniformToFill" />
+            <!-- Green coin template circle, scales with the viewfinder. -->
+            <!-- Fixed logical canvas 1000x1000; Viewbox scales it to the viewfinder.
+                 Margin 2.5 on each side => the circle spans 95% of the square. -->
+            <Viewbox IsHitTestVisible="False">
+                <Grid Width="1000" Height="1000">
+                    <Ellipse Margin="2.5"
+                             Stroke="#FF00E676" StrokeThickness="6"
+                             Fill="#3300E676" />
+                </Grid>
+            </Viewbox>
+        </Grid>
+
+        <!-- ===== Right (7:9): previews on top, buttons on the bottom ===== -->
+        <Grid Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="5*" />
+                <RowDefinition Height="4*" />
+            </Grid.RowDefinitions>
+
+            <!-- Two preview panes: obverse / reverse -->
+            <Grid Grid.Row="0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0" Style="{StaticResource Card}" Margin="0,0,4,0">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Top"
+                                   Text="{Binding CaptureObverse, Source={StaticResource Strings}}"
+                                   FontWeight="SemiBold" Margin="0,0,0,4" />
+                        <Image Source="{Binding ObverseImage}" Stretch="Uniform" />
+                    </DockPanel>
+                </Border>
+
+                <Border Grid.Column="1" Style="{StaticResource Card}" Margin="4,0,0,0">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Top"
+                                   Text="{Binding CaptureReverse, Source={StaticResource Strings}}"
+                                   FontWeight="SemiBold" Margin="0,0,0,4" />
+                        <Image Source="{Binding ReverseImage}" Stretch="Uniform" />
+                    </DockPanel>
+                </Border>
+            </Grid>
+
+            <!-- Three buttons: shoot obverse (1), shoot reverse (2), close (Esc) -->
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <Button Grid.Column="0" Click="OnShootObverse"
+                        Content="{Binding CaptureShootObverseKey, Source={StaticResource Strings}}"
+                        FontSize="15" Padding="6,10" Margin="0,0,4,0" />
+                <Button Grid.Column="1" Click="OnShootReverse"
+                        Content="{Binding CaptureShootReverseKey, Source={StaticResource Strings}}"
+                        FontSize="15" Padding="6,10" Margin="4,0,4,0" />
+                <Button Grid.Column="2" Click="OnClose"
+                        Content="{Binding CaptureClose, Source={StaticResource Strings}}"
+                        FontSize="15" Padding="6,10" Margin="4,0,0,0" />
+            </Grid>
+        </Grid>
+    </Grid>
+</Window>

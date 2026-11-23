@@ -29,6 +29,8 @@ public class MainViewModel : ObservableObject
     private int _orderNo;
     private double _rotation;
     private bool _isBusy;
+    private bool _useGpu;
+    private int _patchGrid = 16;
     private string? _obversePath;
     private string? _reversePath;
     private ImageSource? _obverseImage;
@@ -40,6 +42,14 @@ public class MainViewModel : ObservableObject
     private string _numistaQuery = "";
     private string _numistaLink = "";
     private int? _currentCoinId;
+
+    // ---- comparison view (active side + overlays) ----
+    private CoinSide _compareSide = CoinSide.Obverse;
+    private ImageSource? _compareImage;
+    private string? _etalonObversePath;
+    private string? _etalonReversePath;
+    private bool _showHeatmap = true;
+    private bool _showAnnotations = true;
 
     // ---- anomaly / heatmap ----
     private ImageSource? _heatmapImage;
@@ -86,6 +96,7 @@ public class MainViewModel : ObservableObject
         ShootObverseCommand = new RelayCommand(async () => await ShootAsync(CoinSide.Obverse));
         ShootReverseCommand = new RelayCommand(async () => await ShootAsync(CoinSide.Reverse));
         SwapSidesCommand = new RelayCommand(SwapSides);
+        SwapCompareCommand = new RelayCommand(SwapCompare);
         SearchCommand = new RelayCommand(async () => await SearchAsync());
         SaveMatchCommand = new RelayCommand(async () => await SaveAsync(SourceKind.Match));
         SaveDuplicateCommand = new RelayCommand(async () => await SaveAsync(SourceKind.Duplicate));
@@ -121,6 +132,18 @@ public class MainViewModel : ObservableObject
     public int OrderNo { get => _orderNo; set => SetProperty(ref _orderNo, value); }
     public double Rotation { get => _rotation; set => SetProperty(ref _rotation, value); }
     public bool IsBusy { get => _isBusy; set => SetProperty(ref _isBusy, value); }
+
+    // ---- comparison / anomaly options ----
+    public bool UseGpu { get => _useGpu; set => SetProperty(ref _useGpu, value); }
+    public int PatchGrid { get => _patchGrid; set => SetProperty(ref _patchGrid, value); }
+    public List<int> PatchGridItems { get; } = new() { 8, 16, 32, 64, 128 };
+
+    // ---- comparison view: active side + overlay visibility ----
+    public CoinSide CompareSide { get => _compareSide; private set => SetProperty(ref _compareSide, value); }
+    public ImageSource? CompareImage { get => _compareImage; private set => SetProperty(ref _compareImage, value); }
+    public bool ShowHeatmap { get => _showHeatmap; set => SetProperty(ref _showHeatmap, value); }
+    public bool ShowAnnotations { get => _showAnnotations; set => SetProperty(ref _showAnnotations, value); }
+
     public string? ObversePath => _obversePath;
     public string? ReversePath => _reversePath;
     public ImageSource? ObverseImage { get => _obverseImage; private set => SetProperty(ref _obverseImage, value); }
@@ -242,6 +265,7 @@ public class MainViewModel : ObservableObject
     public RelayCommand ShootObverseCommand { get; }
     public RelayCommand ShootReverseCommand { get; }
     public RelayCommand SwapSidesCommand { get; }
+    public RelayCommand SwapCompareCommand { get; }
     public RelayCommand SearchCommand { get; }
     public RelayCommand SaveMatchCommand { get; }
     public RelayCommand SaveDuplicateCommand { get; }
@@ -269,21 +293,35 @@ public class MainViewModel : ObservableObject
     public string T(string key) => _loc.T(key);
 
     // ==================== camera ====================
+    public bool IsCameraOpen => _camera.IsOpen;
+
+    public bool TryGetCameraFrame(out System.Windows.Media.Imaging.BitmapSource? frame)
+        => _camera.TryGetFrame(out frame);
+
+    private CaptureWindow? _captureWindow;
+
     private void OpenCamera()
     {
-        if (_camera.IsOpen)
+        // Bring the capture window forward if it is already open.
+        if (_captureWindow is { IsLoaded: true })
         {
-            Status = _camera.Description ?? "camera open";
+            _captureWindow.Activate();
             return;
         }
-        if (_camera.Open())
-        {
-            Status = $"{_camera.Description} - open";
-        }
-        else
+        if (!_camera.IsOpen && !_camera.Open())
         {
             Status = T("capture.camera_offline");
+            return;
         }
+        Status = $"{_camera.Description} - open";
+
+        var win = new CaptureWindow(this)
+        {
+            Owner = System.Windows.Application.Current?.MainWindow
+        };
+        win.Closed += (_, _) => _captureWindow = null;
+        _captureWindow = win;
+        win.Show();
     }
 
     // ==================== single-shot capture ====================
@@ -317,12 +355,18 @@ public class MainViewModel : ObservableObject
                     _reversePath = resp.crop_path;
                     ReverseImage = LoadImage(resp.crop_path);
                 }
+                if (side == CompareSide)
+                    CompareImage = LoadImage(resp.crop_path);
                 Status = $"crop: {resp.shape_detected}, {resp.orientation_applied_deg:F1}deg";
             }
             else
             {
                 Status = resp?.error ?? T("status.error");
             }
+        }
+        catch (System.Exception ex)
+        {
+            Status = $"{T("status.error")}: {ex.Message}";
         }
         finally
         {
@@ -373,6 +417,8 @@ public class MainViewModel : ObservableObject
         if (p == null) return;
         _obversePath = p;
         ObverseImage = LoadImage(p);
+        if (CompareSide == CoinSide.Obverse)
+            CompareImage = LoadImage(p);
     }
 
     private void LoadReverseFile()
@@ -381,6 +427,8 @@ public class MainViewModel : ObservableObject
         if (p == null) return;
         _reversePath = p;
         ReverseImage = LoadImage(p);
+        if (CompareSide == CoinSide.Reverse)
+            CompareImage = LoadImage(p);
     }
 
     private static string? PickImage()
@@ -550,33 +598,40 @@ public class MainViewModel : ObservableObject
         int saved = 0;
         for (int i = 0; i < BatchResults.Count; i++)
         {
-            var r = BatchResults[i];
-            var id = _db.NextCoinId();
-            string? ovPhoto = r.ObversePath, revPhoto = r.ReversePath, ovVec = null, revVec = null;
-            var embed = await _backend.EmbedAsync(new EmbedRequest(id, r.ObversePath, r.ReversePath));
-            if (embed is { ok: true })
+            try
             {
-                foreach (var s in embed.sides)
+                var r = BatchResults[i];
+                var id = _db.NextCoinId();
+                string? ovPhoto = r.ObversePath, revPhoto = r.ReversePath, ovVec = null, revVec = null;
+                var embed = await _backend.EmbedAsync(new EmbedRequest(id, r.ObversePath, r.ReversePath));
+                if (embed is { ok: true })
                 {
-                    if (s.side == "obverse") { ovPhoto = s.photo_path; ovVec = s.vector_path; }
-                    else { revPhoto = s.photo_path; revVec = s.vector_path; }
+                    foreach (var s in embed.sides)
+                    {
+                        if (s.side == "obverse") { ovPhoto = s.photo_path; ovVec = s.vector_path; }
+                        else { revPhoto = s.photo_path; revVec = s.vector_path; }
+                    }
                 }
+                var coin = new Coin
+                {
+                    Id = id,
+                    AlbumName = string.IsNullOrEmpty(BatchAlbum) ? Album : BatchAlbum,
+                    PageNo = BatchPage,
+                    OrderNo = r.OrderNo,
+                    ObversePhoto = ovPhoto,
+                    ReversePhoto = revPhoto,
+                    ObverseVector = ovVec,
+                    ReverseVector = revVec,
+                    SourceKind = r.TopCoinId != null ? SourceKind.Match : SourceKind.Manual,
+                    EtalonId = r.TopCoinId,
+                };
+                _db.SaveCoin(coin);
+                saved++;
             }
-            var coin = new Coin
+            catch (System.Exception)
             {
-                Id = id,
-                AlbumName = string.IsNullOrEmpty(BatchAlbum) ? Album : BatchAlbum,
-                PageNo = BatchPage,
-                OrderNo = r.OrderNo,
-                ObversePhoto = ovPhoto,
-                ReversePhoto = revPhoto,
-                ObverseVector = ovVec,
-                ReverseVector = revVec,
-                SourceKind = r.TopCoinId != null ? SourceKind.Match : SourceKind.Manual,
-                EtalonId = r.TopCoinId,
-            };
-            _db.SaveCoin(coin);
-            saved++;
+                // skip this batch coin, keep saving the rest
+            }
         }
         BatchStatus = $"{saved} saved";
     }
@@ -608,14 +663,19 @@ public class MainViewModel : ObservableObject
                 ReversePct = Math.Round(top.reverse_pct, 1);
                 Orientation = top.orientation;
                 ApplyCoinAttributes(top.coin_id);
-                if (!string.IsNullOrEmpty(top.etalon_photo.obverse))
-                    EtalonImage = LoadImage(top.etalon_photo.obverse);
+                _etalonObversePath = top.etalon_photo.obverse;
+                _etalonReversePath = top.etalon_photo.reverse;
+                RefreshCompareImages();
                 Status = $"top match: {top.coin_id} ({top.overall_pct:F1}%)";
             }
             else
             {
                 Status = T("actions.not_determined");
             }
+        }
+        catch (System.Exception ex)
+        {
+            Status = $"{T("status.error")}: {ex.Message}";
         }
         finally
         {
@@ -630,6 +690,40 @@ public class MainViewModel : ObservableObject
         Status = T("actions.swap_sides");
     }
 
+    /// <summary>
+    /// Toggle the comparison side: obverse ↔ reverse. The photos of the
+    /// current coin and the etalon, the heatmap and the saved annotation
+    /// layer are reloaded for the newly active side.
+    /// </summary>
+    private void SwapCompare()
+    {
+        CompareSide = CompareSide == CoinSide.Obverse ? CoinSide.Reverse : CoinSide.Obverse;
+        RefreshCompareImages();
+        LoadAnnotationLayer();
+        Status = T("compare.swap");
+    }
+
+    /// <summary>Reload the photos (current + etalon) and heatmap for CompareSide.</summary>
+    private void RefreshCompareImages()
+    {
+        var path = CompareSide == CoinSide.Obverse ? _obversePath : _reversePath;
+        CompareImage = path is not null && File.Exists(path) ? LoadImage(path) : null;
+
+        var etalonPath = CompareSide == CoinSide.Obverse ? _etalonObversePath : _etalonReversePath;
+        EtalonImage = etalonPath is not null && File.Exists(etalonPath) ? LoadImage(etalonPath) : null;
+
+        HeatmapImage = TryLoadHeatmap();
+    }
+
+    /// <summary>Heatmap file written by the backend for the active side, if any.</summary>
+    private ImageSource? TryLoadHeatmap()
+    {
+        if (_currentCoinId is not int cid) return null;
+        string side = CompareSide == CoinSide.Obverse ? "obverse" : "reverse";
+        var path = Path.Combine(_settings.CoimgDir, $"{cid}_{side}_heatmap.png");
+        return File.Exists(path) ? LoadImage(path) : null;
+    }
+
     // ==================== save ====================
     private async Task SaveAsync(SourceKind kind)
     {
@@ -638,42 +732,58 @@ public class MainViewModel : ObservableObject
             Status = T("status.error");
             return;
         }
-        var id = _db.NextCoinId();
-        string? ovPhoto = _obversePath, revPhoto = _reversePath, ovVec = null, revVec = null;
-        var embed = await _backend.EmbedAsync(new EmbedRequest(id, _obversePath, _reversePath));
-        if (embed is { ok: true })
+        int id;
+        try
         {
-            foreach (var s in embed.sides)
-            {
-                if (s.side == "obverse") { ovPhoto = s.photo_path; ovVec = s.vector_path; }
-                else { revPhoto = s.photo_path; revVec = s.vector_path; }
-            }
+            id = _db.NextCoinId();
         }
-        else
+        catch (System.Exception ex)
         {
-            Status = embed?.error ?? T("status.error");
+            Status = $"{T("status.error")}: {ex.Message}";
             return;
         }
-        var coin = new Coin
+        string? ovPhoto = _obversePath, revPhoto = _reversePath, ovVec = null, revVec = null;
+        try
         {
-            Id = id,
-            MintYear = null,
-            Quality = null,
-            Price = 0,
-            AlbumName = Album,
-            PageNo = PageNo,
-            OrderNo = OrderNo,
-            ObversePhoto = ovPhoto,
-            ReversePhoto = revPhoto,
-            ObverseVector = ovVec,
-            ReverseVector = revVec,
-            SourceKind = kind,
-            IsAnomaly = kind == SourceKind.Anomaly,
-            EtalonId = _currentCoinId,
-        };
-        _db.SaveCoin(coin);
-        _currentCoinId = id;
-        Status = T("status.saved");
+            var embed = await _backend.EmbedAsync(new EmbedRequest(id, _obversePath, _reversePath));
+            if (embed is { ok: true })
+            {
+                foreach (var s in embed.sides)
+                {
+                    if (s.side == "obverse") { ovPhoto = s.photo_path; ovVec = s.vector_path; }
+                    else { revPhoto = s.photo_path; revVec = s.vector_path; }
+                }
+            }
+            else
+            {
+                Status = embed?.error ?? T("status.error");
+                return;
+            }
+            var coin = new Coin
+            {
+                Id = id,
+                MintYear = null,
+                Quality = null,
+                Price = 0,
+                AlbumName = Album,
+                PageNo = PageNo,
+                OrderNo = OrderNo,
+                ObversePhoto = ovPhoto,
+                ReversePhoto = revPhoto,
+                ObverseVector = ovVec,
+                ReverseVector = revVec,
+                SourceKind = kind,
+                IsAnomaly = kind == SourceKind.Anomaly,
+                EtalonId = _currentCoinId,
+            };
+            _db.SaveCoin(coin);
+            _currentCoinId = id;
+            Status = T("status.saved");
+        }
+        catch (System.Exception ex)
+        {
+            Status = $"{T("status.error")}: {ex.Message}";
+        }
     }
 
     private async Task RebuildIndexAsync()
@@ -685,6 +795,10 @@ public class MainViewModel : ObservableObject
             Status = counts is { }
                 ? $"index: obverse={counts["obverse"]}, reverse={counts["reverse"]}"
                 : T("status.error");
+        }
+        catch (System.Exception ex)
+        {
+            Status = $"{T("status.error")}: {ex.Message}";
         }
         finally
         {
@@ -717,6 +831,10 @@ public class MainViewModel : ObservableObject
                 NumistaResults.Add(item);
             Status = $"{NumistaResults.Count} items";
         }
+        catch (System.Exception ex)
+        {
+            Status = $"{T("status.error")}: {ex.Message}";
+        }
         finally
         {
             IsBusy = false;
@@ -744,6 +862,10 @@ public class MainViewModel : ObservableObject
             if (!string.IsNullOrEmpty(resp.title) && string.IsNullOrWhiteSpace(TypeEditor.Name))
                 TypeEditor.Name = resp.title;
             Status = $"N#{resp.numista_id} {resp.kind} — {resp.title ?? "?"}";
+        }
+        catch (System.Exception ex)
+        {
+            Status = $"{T("status.error")}: {ex.Message}";
         }
         finally
         {
@@ -829,13 +951,13 @@ public class MainViewModel : ObservableObject
     // ==================== anomaly ====================
     private async Task RunAnomalyAsync()
     {
-        string? path = _obversePath ?? _reversePath;
+        string? path = CompareSide == CoinSide.Obverse ? _obversePath : _reversePath;
         if (path is null)
         {
             Status = T("status.error");
             return;
         }
-        CoinSide side = _obversePath != null ? CoinSide.Obverse : CoinSide.Reverse;
+        CoinSide side = CompareSide;
         var refs = new List<int>();
         if (_currentCoinId is int eid)
             refs.Add(eid); // etalon as the normal reference
@@ -848,7 +970,9 @@ public class MainViewModel : ObservableObject
                 reference_ids: refs,
                 heatmap_size: 128,
                 threshold: null,
-                coin_id: _currentCoinId));
+                coin_id: _currentCoinId,
+                device: UseGpu ? "gpu" : "cpu",
+                patch_grid: PatchGrid));
             if (resp is null)
             {
                 AnomalyStatus = T("status.error");
@@ -859,7 +983,14 @@ public class MainViewModel : ObservableObject
             AnomalyStatus = resp.is_anomaly
                 ? $"{T("anomaly.detected")} ({resp.score:F2})"
                 : $"{T("anomaly.ok")} ({resp.score:F2})";
-            HeatmapImage = File.Exists(resp.heatmap_path!) ? LoadImage(resp.heatmap_path) : null;
+            HeatmapImage = resp.heatmap_path is not null && File.Exists(resp.heatmap_path)
+                ? LoadImage(resp.heatmap_path)
+                : TryLoadHeatmap();
+        }
+        catch (System.Exception ex)
+        {
+            // Timeout / backend hiccup: report, don't crash the UI.
+            AnomalyStatus = $"{T("status.error")}: {ex.Message}";
         }
         finally
         {
@@ -886,7 +1017,7 @@ public class MainViewModel : ObservableObject
             Status = T("status.error");
             return;
         }
-        string side = _obversePath != null ? "obverse" : "reverse";
+        string side = CompareSide == CoinSide.Obverse ? "obverse" : "reverse";
         var path = AnnotationLayer.Save(cid, side, AnnotationItems.ToList(), _settings.CoimgDir);
         var c = _db.GetCoin(cid);
         if (c != null)
@@ -905,7 +1036,7 @@ public class MainViewModel : ObservableObject
         if (_currentCoinId is not int cid) return;
         var c = _db.GetCoin(cid);
         if (c is null) return;
-        string side = _obversePath != null ? "obverse" : "reverse";
+        string side = CompareSide == CoinSide.Obverse ? "obverse" : "reverse";
         var path = side == "obverse" ? c.ObverseLayer : c.ReverseLayer;
         if (string.IsNullOrEmpty(path) || !File.Exists(path)) return;
         var layer = AnnotationLayer.Load(path);
@@ -954,11 +1085,15 @@ public class MainViewModel : ObservableObject
     private static ImageSource? LoadImage(string path)
     {
         if (!File.Exists(path)) return null;
+        // Load through a byte array: WPF caches BitmapImage by URI, so a
+        // fresh UriSource for a rewritten file (e.g. a new heatmap under
+        // the same name) would show the stale image.
         var bmp = new BitmapImage();
         bmp.BeginInit();
         bmp.CacheOption = BitmapCacheOption.OnLoad;
-        bmp.UriSource = new Uri(path, UriKind.Absolute);
+        bmp.StreamSource = new MemoryStream(File.ReadAllBytes(path));
         bmp.EndInit();
+        bmp.Freeze();
         return bmp;
     }
 }

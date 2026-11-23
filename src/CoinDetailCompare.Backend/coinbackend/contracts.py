@@ -95,6 +95,11 @@ class AnomalyRequest(BaseModel):
     threshold: float | None = None
     # When known, heatmap files are persisted under this coin id.
     coin_id: int | None = None
+    # Optional runtime device override: "cpu" | "gpu" (falls back to CPU
+    # automatically when the GPU is unavailable / has no kernels).
+    device: str | None = None
+    # Patch grid side (min..max, e.g. 8..128) for the patch-level detector.
+    patch_grid: int | None = None
 
 
 class BoundingBox(BaseModel):

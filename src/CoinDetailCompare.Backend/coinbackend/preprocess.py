@@ -63,8 +63,25 @@ def detect_coin(img: "np.ndarray"):
         maxRadius=max_r,
     )
     if circles is not None:
-        c = np.round(circles[0, 0]).astype(int)
-        cx, cy, r = int(c[0]), int(c[1]), int(c[2])
+        # HoughCircles returns candidates in arbitrary order. The coin is
+        # aligned with the viewfinder's template circle, i.e. the frame
+        # center: prefer the candidate closest to the center, breaking
+        # ties by radius (bigger wins).
+        cx_f, cy_f = w / 2.0, h / 2.0
+        half = min(h, w) / 2.0
+        best = None
+        for c in circles[0]:
+            cx, cy, r = float(c[0]), float(c[1]), float(c[2])
+            d = math.hypot(cx - cx_f, cy - cy_f) / half
+            score = d * 2.0 - r / half  # lower is better
+            if best is None or score < best[0]:
+                best = (score, cx, cy, r)
+        _, cx, cy, r = best
+        cx, cy = int(round(cx)), int(round(cy))
+        # Hough tends to land on the inner rim edge; grow the radius so the
+        # rim (гурт) is always inside the crop. Clamped to image bounds.
+        r = int(round(r * 1.08))
+        r = min(r, cx, cy, w - cx, h - cy)
         mask = np.zeros((h, w), dtype=np.uint8)
         cv2.circle(mask, (cx, cy), r, 255, -1)
         return mask, "circle"
@@ -74,14 +91,31 @@ def detect_coin(img: "np.ndarray"):
     edges = cv2.dilate(edges, np.ones((3, 3), np.uint8), iterations=2)
     contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if contours:
-        contour = max(contours, key=cv2.contourArea)
+        # Same center preference as Hough: among coin-sized contours pick
+        # the one whose mass center is closest to the frame center, so an
+        # off-center object (table edge, another round item) wins out.
+        frame_area = float(h * w)
+        scored = []
+        for cnt in contours:
+            area = cv2.contourArea(cnt)
+            if area < frame_area * 0.03 or area > frame_area * 0.75:
+                continue
+            m = cv2.moments(cnt)
+            if m["m00"] <= 0:
+                continue
+            mx = m["m10"] / m["m00"]
+            my = m["m01"] / m["m00"]
+            scored.append((math.hypot(mx - w / 2.0, my - h / 2.0), cnt))
+        contour = min(scored, key=lambda t: t[0])[1] if scored else max(contours, key=cv2.contourArea)
         if cv2.contourArea(contour) > (h * w) * 0.05:
             mask = np.zeros((h, w), dtype=np.uint8)
             cv2.drawContours(mask, [contour], -1, 255, -1)
             # Prefer an inscribed/circumscribed circle for near-round contours
             (cx, cy), r = cv2.minEnclosingCircle(contour)
             if _is_roundish(contour, (cx, cy), r):
-                cv2.circle(mask, (int(cx), int(cy)), int(r), 255, -1)
+                # Small margin: Canny may stop just inside the rim.
+                r = min(int(round(r * 1.03)), int(cx), int(cy), w - int(cx), h - int(cy))
+                cv2.circle(mask, (int(cx), int(cy)), r, 255, -1)
                 return mask, "circle"
             return mask, "contour"
 

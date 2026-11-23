@@ -70,6 +70,8 @@ CREATE TABLE IF NOT EXISTS reference (
   en      TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_ref_kind ON reference(kind);
+-- Uniqueness makes reference population (INSERT OR IGNORE) idempotent.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ref_kind_code ON reference(kind, code);
 
 CREATE TABLE IF NOT EXISTS meta (
   key   TEXT PRIMARY KEY,

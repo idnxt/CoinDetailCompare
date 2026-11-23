@@ -119,6 +119,13 @@ class _DinoModel:
             self._probe()
         return self._dim  # type: ignore[return-value]
 
+    def set_device(self, device) -> None:
+        """Move the model to another torch device (per-request CPU/GPU switch)."""
+        if str(device) == str(self.device):
+            return
+        self.raw.to(device)
+        self.device = device
+
     def _probe(self) -> None:
         import torch  # type: ignore
 

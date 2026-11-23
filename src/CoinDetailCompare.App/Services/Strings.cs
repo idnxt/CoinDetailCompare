@@ -56,6 +56,11 @@ public class Strings : INotifyPropertyChanged
     public string CaptureObverse => this["capture.obverse"];
     public string CaptureReverse => this["capture.reverse"];
     public string CaptureCameraOffline => this["capture.camera_offline"];
+    public string CaptureWindowTitle => this["capture.window_title"];
+    public string CaptureShootObverseKey => this["capture.shoot_obverse_key"];
+    public string CaptureShootReverseKey => this["capture.shoot_reverse_key"];
+    public string CaptureClose => this["capture.close"];
+    public string CaptureHotkeysHint => this["capture.hotkeys_hint"];
 
     // compare
     public string CompareSection => this["compare.section"];
@@ -66,6 +71,11 @@ public class Strings : INotifyPropertyChanged
     public string CompareOrientation => this["compare.orientation"];
     public string CompareSearch => this["compare.search"];
     public string CompareRebuild => this["compare.rebuild"];
+    public string CompareDevice => this["compare.device"];
+    public string ComparePatches => this["compare.patches"];
+    public string CompareSwap => this["compare.swap"];
+    public string CompareHeatmap => this["compare.heatmap"];
+    public string CompareLayer => this["compare.layer"];
     public string CompareAnnotationHint => this["compare.annotation_hint"];
 
     // annotation

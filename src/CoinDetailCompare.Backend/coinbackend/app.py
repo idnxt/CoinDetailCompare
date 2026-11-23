@@ -160,6 +160,8 @@ def create_app() -> FastAPI:
                 heatmap_size=req.heatmap_size,
                 threshold=req.threshold,
                 coin_id=req.coin_id,
+                device=req.device,
+                patch_grid=req.patch_grid,
             )
             return AnomalyResponse(**result)
         except NotImplementedError as exc:

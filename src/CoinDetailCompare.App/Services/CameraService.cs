@@ -1,4 +1,5 @@
 using System.IO;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using OpenCvSharp;
 
@@ -60,12 +61,18 @@ public class OpenCvCameraDevice : ICameraDevice
             return false;
         }
         // Reasonable defaults for a desktop webcam.
+        _capture.Set(VideoCaptureProperties.FrameWidth, 1920);
+        _capture.Set(VideoCaptureProperties.FrameHeight, 1080);
         _capture.Set(VideoCaptureProperties.Fps, 30);
         Description = $"Camera #{_deviceIndex}";
         IsOpen = true;
         return true;
     }
 
+    /// <summary>
+    /// Returns the full camera frame (no cropping — the viewfinder shows
+    /// its center via stretch, and capture always saves the whole frame).
+    /// </summary>
     public bool TryGetFrame(out BitmapSource? frame)
     {
         frame = null;
@@ -76,16 +83,42 @@ public class OpenCvCameraDevice : ICameraDevice
         if (!_capture.Read(mat) || mat.Empty())
             return false;
 
-        // Encode as PNG bytes and decode into a WPF BitmapSource.
-        Cv2.ImEncode(".png", mat, out var buf);
-        var bmp = new BitmapImage();
-        bmp.BeginInit();
-        bmp.CacheOption = BitmapCacheOption.OnLoad;
-        bmp.StreamSource = new MemoryStream(buf);
-        bmp.EndInit();
-        bmp.Freeze(); // safe across threads
-        frame = bmp;
-        return true;
+        try
+        {
+            // Direct pixel hand-off (temporary replacement for the PNG
+            // round-trip, which throttled the ~25 fps preview): BGR -> BGRA
+            // copy straight into a frozen BitmapSource, no encode/decode.
+            int w = mat.Cols, h = mat.Rows;
+            using var bgra = new Mat();
+            var t = mat.Type();
+            if (t == MatType.CV_8UC3)
+                Cv2.CvtColor(mat, bgra, ColorConversionCodes.BGR2BGRA);
+            else if (t == MatType.CV_8UC4)
+                mat.CopyTo(bgra);
+            else
+                throw new InvalidOperationException($"Unexpected mat type: {t}");
+
+            int stride = bgra.Cols * 4;
+            var pixels = new byte[stride * h];
+            System.Runtime.InteropServices.Marshal.Copy(bgra.Data, pixels, 0, pixels.Length);
+            var direct = BitmapSource.Create(w, h, 96, 96, PixelFormats.Bgra32, null, pixels, stride);
+            direct.Freeze(); // safe across threads
+            frame = direct;
+            return true;
+        }
+        catch
+        {
+            // Fallback: PNG bytes -> BitmapImage (always works).
+            Cv2.ImEncode(".png", mat, out var buf);
+            var bmp = new BitmapImage();
+            bmp.BeginInit();
+            bmp.CacheOption = BitmapCacheOption.OnLoad;
+            bmp.StreamSource = new MemoryStream(buf);
+            bmp.EndInit();
+            bmp.Freeze();
+            frame = bmp;
+            return true;
+        }
     }
 
     public void Close()

@@ -43,7 +43,8 @@ public class DbService
         using var conn = Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = "INSERT INTO coin (mint_year) VALUES (NULL) RETURNING id;";
-        return (int)cmd.ExecuteScalar()!;
+        // INTEGER columns come back as Int64 from ExecuteScalar.
+        return Convert.ToInt32(cmd.ExecuteScalar()!);
     }
 
     public void SaveCoin(Coin c)
@@ -177,7 +178,7 @@ public class DbService
             @issued_date, @links, @obverse_text, @reverse_text, @rim_text)
             RETURNING id;";
         AddTypeParams(cmd, t);
-        var id = (int)cmd.ExecuteScalar()!;
+        var id = Convert.ToInt32(cmd.ExecuteScalar()!);
         t.Id = id;
         return id;
     }

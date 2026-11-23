@@ -16,7 +16,9 @@ public class BackendClient
 
     public BackendClient(string baseUrl)
     {
-        _http = new HttpClient { BaseAddress = new Uri(baseUrl), Timeout = TimeSpan.FromSeconds(120) };
+        // Anomaly detection on CPU can take a minute or two (patch-level
+        // embeddings); keep the timeout generous rather than flaky.
+        _http = new HttpClient { BaseAddress = new Uri(baseUrl), Timeout = TimeSpan.FromSeconds(300) };
     }
 
     public Task<HealthDto?> HealthAsync()

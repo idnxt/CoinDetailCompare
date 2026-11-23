@@ -55,10 +55,6 @@
                     </Grid>
 
                     <Separator Margin="0,10" />
-                    <Button Style="{StaticResource Btn}" Content="{Binding CaptureShootObverse, Source={StaticResource Strings}}"
-                            Command="{Binding ShootObverseCommand}" />
-                    <Button Style="{StaticResource Btn}" Content="{Binding CaptureShootReverse, Source={StaticResource Strings}}"
-                            Command="{Binding ShootReverseCommand}" />
                     <Button Style="{StaticResource Btn}" Content="{Binding CaptureLoadObverse, Source={StaticResource Strings}}"
                             Command="{Binding LoadObverseFileCommand}" />
                     <Button Style="{StaticResource Btn}" Content="{Binding CaptureLoadReverse, Source={StaticResource Strings}}"
@@ -146,13 +142,15 @@
                         <StackPanel Grid.Column="0" Margin="0,0,8,0">
                             <TextBlock Text="{Binding CompareCurrent, Source={StaticResource Strings}}" FontWeight="SemiBold" />
                             <Grid>
-                                <Image Source="{Binding ObverseImage}" Stretch="Uniform" />
+                                <Image Source="{Binding CompareImage}" Stretch="Uniform" />
                                 <controls:AnnotationCanvas x:Name="AnnotationCanvas"
                                                          Items="{Binding AnnotationItems}"
                                                          Tool="{Binding AnnotationTool}"
-                                                         Color="{Binding AnnotationColor}" />
+                                                         Color="{Binding AnnotationColor}"
+                                                         Visibility="{Binding ShowAnnotations, Converter={StaticResource BoolToVis}}" />
                                 <Image Source="{Binding HeatmapImage}" Stretch="Uniform"
-                                       Opacity="0.55" />
+                                       Opacity="0.55"
+                                       Visibility="{Binding ShowHeatmap, Converter={StaticResource BoolToVis}}" />
                             </Grid>
                         </StackPanel>
                         <StackPanel Grid.Column="1" Margin="8,0,0,0">
@@ -209,6 +207,32 @@
                                 IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}" />
                         <Button Style="{StaticResource Btn}" Content="{Binding CompareRebuild, Source={StaticResource Strings}}"
                                 Command="{Binding RebuildIndexCommand}" HorizontalAlignment="Left" />
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Button Grid.Column="0" Style="{StaticResource Btn}" Content="{Binding CompareSwap, Source={StaticResource Strings}}"
+                                    Command="{Binding SwapCompareCommand}" Margin="0,0,12,0" />
+                            <CheckBox Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0"
+                                      Content="{Binding CompareDevice, Source={StaticResource Strings}}"
+                                      IsChecked="{Binding UseGpu}" />
+                            <TextBlock Grid.Column="2" VerticalAlignment="Center" Margin="0,0,6,0"
+                                       Text="{Binding ComparePatches, Source={StaticResource Strings}}" />
+                            <ComboBox Grid.Column="3" Width="70" VerticalAlignment="Center" Margin="0,0,12,0"
+                                      ItemsSource="{Binding PatchGridItems}"
+                                      SelectedItem="{Binding PatchGrid}" />
+                            <CheckBox Grid.Column="4" VerticalAlignment="Center" Margin="0,0,12,0"
+                                      Content="{Binding CompareHeatmap, Source={StaticResource Strings}}"
+                                      IsChecked="{Binding ShowHeatmap}" />
+                            <CheckBox Grid.Column="5" VerticalAlignment="Center"
+                                      Content="{Binding CompareLayer, Source={StaticResource Strings}}"
+                                      IsChecked="{Binding ShowAnnotations}" />
+                        </Grid>
                         <Grid Margin="0,8,0,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />

@@ -20,7 +20,12 @@
     "save_all": "Save all coins of the batch",
     "obverse": "Obverse",
     "reverse": "Reverse",
-    "camera_offline": "Camera not connected"
+    "camera_offline": "Camera not connected",
+    "window_title": "Coin capture",
+    "shoot_obverse_key": "Shoot obverse (1)",
+    "shoot_reverse_key": "Shoot reverse (2)",
+    "close": "Close",
+    "hotkeys_hint": "1 — obverse, 2 — reverse, Esc — close"
   },
   "compare": {
     "section": "Comparison",
@@ -31,6 +36,11 @@
     "orientation": "Orientation",
     "search": "Find similar",
     "rebuild": "Rebuild index",
+    "device": "GPU",
+    "patches": "Patches",
+    "swap": "Swap comparison",
+    "heatmap": "Heatmap",
+    "layer": "Layer",
     "annotation_hint": "Draw over the photo: line — drag, ellipse/arrow — from start to end."
   },
   "annotation": {
