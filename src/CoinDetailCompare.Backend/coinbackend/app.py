@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import gc
+import threading
 import time
 from pathlib import Path
 
@@ -53,6 +54,14 @@ def _cuda_ok() -> bool:
         return torch.cuda.is_available()
     except Exception:
         return False
+
+
+# Serializes ALL GPU work (model moves + forward passes) so two concurrent
+# requests can never move the shared model between CPU and CUDA while the
+# other is mid-inference (device-mismatch 400s, NaN embeddings -> SVD
+# failures downstream). Single-user app: the cost of serialization is
+# negligible compared to the inference itself.
+_GPU_LOCK = threading.Lock()
 
 
 def _move_models(device: str) -> None:
@@ -110,7 +119,15 @@ def create_app() -> FastAPI:
     @app.middleware("http")
     async def _free_gpu_after_request(request: Request, call_next):
         response = await call_next(request)
-        _release_gpu()
+        # Safety net: nothing may be left on the GPU between requests.
+        # Non-blocking so plain requests (e.g. /health polling) never wait
+        # behind a GPU operation; GPU endpoints already release inside their
+        # own locked section.
+        if _cuda_ok() and _GPU_LOCK.acquire(blocking=False):
+            try:
+                _release_gpu()
+            finally:
+                _GPU_LOCK.release()
         return response
 
     @app.get("/health")
@@ -155,38 +172,41 @@ def create_app() -> FastAPI:
 
     @app.post("/search", response_model=SearchResponse)
     def search_endpoint(req: SearchRequest):
-        try:
+        with _GPU_LOCK:
             _ensure_gpu()
-            topk = req.topk or CONFIG.topk
-            ob_path = req.obverse_path or (req.crop_path if req.side == "obverse" else None)
-            rev_path = req.reverse_path or (req.crop_path if req.side == "reverse" else None)
+            try:
+                topk = req.topk or CONFIG.topk
+                ob_path = req.obverse_path or (req.crop_path if req.side == "obverse" else None)
+                rev_path = req.reverse_path or (req.crop_path if req.side == "reverse" else None)
 
-            if ob_path and rev_path:
-                # Both sides available -> check both permutations (A-A+R-R vs A-R+R-A).
-                ov_vec = EMBEDDER.embed_image(_read_bgr(ob_path))
-                rv_vec = EMBEDDER.embed_image(_read_bgr(rev_path))
-                both = SEARCH.search_both_sides(ov_vec, rv_vec, topk)
-                candidates = [_enrich(c) for c in both]
-                query_side = "both"
-                sides: dict[str, Side] = {}
-                if candidates:
-                    sides["obverse"] = Side(coin_id=candidates[0]["coin_id"], pct=candidates[0]["obverse_pct"])
-                    sides["reverse"] = Side(coin_id=candidates[0]["coin_id"], pct=candidates[0]["reverse_pct"])
-            else:
-                # Single side only -> rank that side.
-                vec = EMBEDDER.embed_image(_read_bgr(req.crop_path))
-                ranked = SEARCH.search_side(req.side, vec, topk)
-                candidates = [_candidate_from_db(cid, s, req.side) for cid, s in ranked]
-                query_side = req.side
-                sides = (
-                    {req.side: Side(coin_id=candidates[0]["coin_id"], pct=candidates[0]["overall_pct"])}
-                    if candidates
-                    else {}
-                )
+                if ob_path and rev_path:
+                    # Both sides available -> check both permutations (A-A+R-R vs A-R+R-A).
+                    ov_vec = EMBEDDER.embed_image(_read_bgr(ob_path))
+                    rv_vec = EMBEDDER.embed_image(_read_bgr(rev_path))
+                    both = SEARCH.search_both_sides(ov_vec, rv_vec, topk)
+                    candidates = [_enrich(c) for c in both]
+                    query_side = "both"
+                    sides: dict[str, Side] = {}
+                    if candidates:
+                        sides["obverse"] = Side(coin_id=candidates[0]["coin_id"], pct=candidates[0]["obverse_pct"])
+                        sides["reverse"] = Side(coin_id=candidates[0]["coin_id"], pct=candidates[0]["reverse_pct"])
+                else:
+                    # Single side only -> rank that side.
+                    vec = EMBEDDER.embed_image(_read_bgr(req.crop_path))
+                    ranked = SEARCH.search_side(req.side, vec, topk)
+                    candidates = [_candidate_from_db(cid, s, req.side) for cid, s in ranked]
+                    query_side = req.side
+                    sides = (
+                        {req.side: Side(coin_id=candidates[0]["coin_id"], pct=candidates[0]["overall_pct"])}
+                        if candidates
+                        else {}
+                    )
 
-            return SearchResponse(query_side=query_side, candidates=candidates, sides=sides)
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=str(exc))
+                return SearchResponse(query_side=query_side, candidates=candidates, sides=sides)
+            except Exception as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
+            finally:
+                _release_gpu()
 
     @app.get("/debug/vram")
     def debug_vram():
@@ -221,115 +241,133 @@ def create_app() -> FastAPI:
     @app.post("/embed", response_model=EmbedResponse)
     def embed_endpoint(req: EmbedRequest):
         """Embed one or both crops and persist {id}_{side}.png + .npy + index entry."""
-        try:
-            import shutil
-
+        with _GPU_LOCK:
             _ensure_gpu()
-            sides: list[EmbedSideResult] = []
-            for side in ("obverse", "reverse"):
-                src = req.obverse_path if side == "obverse" else req.reverse_path
-                if not src:
-                    continue
-                img = _read_bgr(src)
-                vec = EMBEDDER.embed_image(img)
-                photo = STORAGE.photo_path(req.coin_id, side)
-                shutil.copyfile(src, photo)
-                _write_bgr(photo, img)  # re-encode consistent (BGR, no EXIF)
-                vpath = STORAGE.vector_path(req.coin_id, side)
-                np.save(str(vpath), vec.astype("float32"))
-                SEARCH.add_vector(req.coin_id, side, vec)
-                sides.append(
-                    EmbedSideResult(
-                        side=side,
-                        photo_path=str(photo),
-                        vector_path=str(vpath),
-                        dim=int(vec.shape[0]),
+            try:
+                import shutil
+
+                sides: list[EmbedSideResult] = []
+                for side in ("obverse", "reverse"):
+                    src = req.obverse_path if side == "obverse" else req.reverse_path
+                    if not src:
+                        continue
+                    img = _read_bgr(src)
+                    vec = EMBEDDER.embed_image(img)
+                    photo = STORAGE.photo_path(req.coin_id, side)
+                    shutil.copyfile(src, photo)
+                    _write_bgr(photo, img)  # re-encode consistent (BGR, no EXIF)
+                    vpath = STORAGE.vector_path(req.coin_id, side)
+                    np.save(str(vpath), vec.astype("float32"))
+                    SEARCH.add_vector(req.coin_id, side, vec)
+                    sides.append(
+                        EmbedSideResult(
+                            side=side,
+                            photo_path=str(photo),
+                            vector_path=str(vpath),
+                            dim=int(vec.shape[0]),
+                        )
                     )
-                )
-            SEARCH.persist()
-            return EmbedResponse(ok=True, coin_id=req.coin_id, sides=sides)
-        except Exception as exc:
-            return EmbedResponse(ok=False, coin_id=req.coin_id, error=str(exc))
+                SEARCH.persist()
+                return EmbedResponse(ok=True, coin_id=req.coin_id, sides=sides)
+            except Exception as exc:
+                return EmbedResponse(ok=False, coin_id=req.coin_id, error=str(exc))
+            finally:
+                _release_gpu()
 
     @app.post("/anomaly", response_model=AnomalyResponse)
     def anomaly_endpoint(req: AnomalyRequest):
-        try:
+        # Locked even for CPU requests: the shared model must not be moved
+        # under a request that expects it on the CPU.
+        with _GPU_LOCK:
             if (req.device or "").lower() != "cpu":
                 _ensure_gpu()
-            result = ANOMALY.detect(
-                crop_path=req.crop_path,
-                side=req.side,
-                reference_ids=req.reference_ids,
-                heatmap_size=req.heatmap_size,
-                threshold=req.threshold,
-                coin_id=req.coin_id,
-                device=req.device,
-                patch_grid=req.patch_grid,
-            )
-            return AnomalyResponse(**result)
-        except NotImplementedError as exc:
-            return AnomalyResponse(
-                is_anomaly=False, score=0.0, heatmap_size=req.heatmap_size, error=str(exc)
-            )
-        except Exception as exc:
-            return AnomalyResponse(
-                is_anomaly=False, score=0.0, heatmap_size=req.heatmap_size, error=str(exc)
-            )
+            try:
+                result = ANOMALY.detect(
+                    crop_path=req.crop_path,
+                    side=req.side,
+                    reference_ids=req.reference_ids,
+                    heatmap_size=req.heatmap_size,
+                    threshold=req.threshold,
+                    coin_id=req.coin_id,
+                    device=req.device,
+                    patch_grid=req.patch_grid,
+                )
+                return AnomalyResponse(**result)
+            except NotImplementedError as exc:
+                return AnomalyResponse(
+                    is_anomaly=False, score=0.0, heatmap_size=req.heatmap_size, error=str(exc)
+                )
+            except Exception as exc:
+                return AnomalyResponse(
+                    is_anomaly=False, score=0.0, heatmap_size=req.heatmap_size, error=str(exc)
+                )
+            finally:
+                _release_gpu()
 
     @app.post("/compare", response_model=CompareResponse)
     def compare_endpoint(req: CompareRequest):
         """Rotation-aligned diff layer (query vs etalon) + 2-D vector projection."""
         from .diffmap import aligned_pair, back_to_query, diff_image, project_2d
 
-        try:
+        with _GPU_LOCK:
             _ensure_gpu()
-            query = _read_bgr(req.crop_path)
-            etalon_path = STORAGE.photo_path(req.etalon_coin_id, req.side)
-            etalon = _read_bgr(str(etalon_path))
+            try:
+                query = _read_bgr(req.crop_path)
+                etalon_path = STORAGE.photo_path(req.etalon_coin_id, req.side)
+                etalon = _read_bgr(str(etalon_path))
 
-            qn, rc, deg, m_q = aligned_pair(query, etalon)
-            norm_path, diff_path = None, None
-            mean = 0.0
-            if req.coin_id is not None:
-                norm_path = STORAGE.normalized_path(req.coin_id, req.side)
-                diff_path = STORAGE.cfg.coimg_dir / f"{req.coin_id}_{req.side}_diff.png"
-                _write_bgr(norm_path, qn)
-                out, mean = diff_image(qn, rc)
-                # Put the layer back in the raw query frame so the UI overlay
-                # covers the whole displayed coin (see back_to_query).
-                hq, wq = query.shape[:2]
-                _write_bgr(diff_path, back_to_query(out, m_q, (wq, hq)))
+                qn, rc, deg, m_q = aligned_pair(query, etalon)
+                norm_path, diff_path = None, None
+                mean = 0.0
+                if req.coin_id is not None:
+                    norm_path = STORAGE.normalized_path(req.coin_id, req.side)
+                    diff_path = STORAGE.cfg.coimg_dir / f"{req.coin_id}_{req.side}_diff.png"
+                    _write_bgr(norm_path, qn)
+                    out, mean = diff_image(qn, rc)
+                    # Put the layer back in the raw query frame so the UI overlay
+                    # covers the whole displayed coin (see back_to_query).
+                    hq, wq = query.shape[:2]
+                    _write_bgr(diff_path, back_to_query(out, m_q, (wq, hq)))
 
-            # 2-D projection of the search vectors: query + etalon candidates.
-            ids = list(dict.fromkeys([req.etalon_coin_id, *req.candidate_ids]))
-            vectors: list[np.ndarray] = [EMBEDDER.embed_image(query)]
-            labels: list[str] = ["query"]
-            is_query: list[bool] = [True]
-            for cid in ids:
-                vpath = STORAGE.vector_path(cid, req.side)
-                vec = (
-                    np.load(str(vpath))
-                    if vpath.exists()
-                    else EMBEDDER.embed_image(_read_bgr(str(STORAGE.photo_path(cid, req.side))))
+                # 2-D projection of the search vectors: query + etalon candidates.
+                # Visualization only: if it fails (e.g. SVD not converging on a
+                # degenerate vector) the diff layer results are still returned.
+                points: list[VectorPoint] = []
+                try:
+                    ids = list(dict.fromkeys([req.etalon_coin_id, *req.candidate_ids]))
+                    vectors: list[np.ndarray] = [EMBEDDER.embed_image(query)]
+                    labels: list[str] = ["query"]
+                    is_query: list[bool] = [True]
+                    for cid in ids:
+                        vpath = STORAGE.vector_path(cid, req.side)
+                        vec = (
+                            np.load(str(vpath))
+                            if vpath.exists()
+                            else EMBEDDER.embed_image(_read_bgr(str(STORAGE.photo_path(cid, req.side))))
+                        )
+                        vectors.append(vec)
+                        labels.append(f"#{cid}")
+                        is_query.append(False)
+                    pts = project_2d(vectors)
+                    points = [
+                        VectorPoint(x=round(px, 4), y=round(py, 4), label=lab, is_query=q)
+                        for (px, py), lab, q in zip(pts, labels, is_query)
+                    ]
+                except Exception:
+                    points = []
+
+                return CompareResponse(
+                    ok=True,
+                    normalized_path=str(norm_path) if norm_path else None,
+                    diff_path=str(diff_path) if diff_path else None,
+                    mean_diff=round(mean, 4),
+                    rotation_deg=round(deg, 2),
+                    points=points,
                 )
-                vectors.append(vec)
-                labels.append(f"#{cid}")
-                is_query.append(False)
-            pts = project_2d(vectors)
-            points = [
-                VectorPoint(x=round(px, 4), y=round(py, 4), label=lab, is_query=q)
-                for (px, py), lab, q in zip(pts, labels, is_query)
-            ]
-            return CompareResponse(
-                ok=True,
-                normalized_path=str(norm_path) if norm_path else None,
-                diff_path=str(diff_path) if diff_path else None,
-                mean_diff=round(mean, 4),
-                rotation_deg=round(deg, 2),
-                points=points,
-            )
-        except Exception as exc:
-            return CompareResponse(ok=False, mean_diff=0.0, error=str(exc))
+            except Exception as exc:
+                return CompareResponse(ok=False, mean_diff=0.0, error=str(exc))
+            finally:
+                _release_gpu()
 
     @app.post("/index/rebuild")
     def rebuild_index():
@@ -341,29 +379,32 @@ def create_app() -> FastAPI:
         other coins (explicit ids, or all coins that have a vector for the side)."""
         from .diffmap import project_2d
 
-        try:
+        with _GPU_LOCK:
             _ensure_gpu()
-            vectors = [_load_vector(req.coin_id, req.side)]
-            labels = [f"#{req.coin_id}"]
-            is_query = [True]
-            ids = [i for i in dict.fromkeys(req.other_ids) if i != req.coin_id]
-            if not ids:
-                # no explicit set: every other coin with a vector for this side
-                ids = [cid for cid, _ in STORAGE.iter_vectors(req.side) if cid != req.coin_id][:49]
-            for cid in ids:
-                try:
-                    vectors.append(_load_vector(cid, req.side))
-                    labels.append(f"#{cid}")
-                    is_query.append(False)
-                except Exception:
-                    continue  # coin without photo/vector is simply skipped
-            pts = project_2d(vectors)
-            return VectorProjectResponse(ok=True, points=[
-                VectorPoint(x=round(px, 4), y=round(py, 4), label=lab, is_query=q)
-                for (px, py), lab, q in zip(pts, labels, is_query)
-            ])
-        except Exception as exc:
-            return VectorProjectResponse(ok=False, error=str(exc))
+            try:
+                vectors = [_load_vector(req.coin_id, req.side)]
+                labels = [f"#{req.coin_id}"]
+                is_query = [True]
+                ids = [i for i in dict.fromkeys(req.other_ids) if i != req.coin_id]
+                if not ids:
+                    # no explicit set: every other coin with a vector for this side
+                    ids = [cid for cid, _ in STORAGE.iter_vectors(req.side) if cid != req.coin_id][:49]
+                for cid in ids:
+                    try:
+                        vectors.append(_load_vector(cid, req.side))
+                        labels.append(f"#{cid}")
+                        is_query.append(False)
+                    except Exception:
+                        continue  # coin without photo/vector is simply skipped
+                pts = project_2d(vectors)
+                return VectorProjectResponse(ok=True, points=[
+                    VectorPoint(x=round(px, 4), y=round(py, 4), label=lab, is_query=q)
+                    for (px, py), lab, q in zip(pts, labels, is_query)
+                ])
+            except Exception as exc:
+                return VectorProjectResponse(ok=False, error=str(exc))
+            finally:
+                _release_gpu()
 
     @app.get("/compare/image")
     def compare_image_endpoint(coin_id: int, etalon_coin_id: int, side: str):
@@ -410,25 +451,29 @@ def create_app() -> FastAPI:
         """Re-embed the stored photo(s) of a coin, replace its .npy vector and
         refresh the FAISS entry (an etalon has no heatmap to rebuild, but it
         always has a vector)."""
-        _ensure_gpu()
-        sides = [req.side] if req.side else ("obverse", "reverse")
-        done: list[str] = []
-        dim = None
-        for side in sides:
-            photo = STORAGE.photo_path(req.coin_id, side)
-            if not photo.exists():
-                continue
-            img = _read_bgr(str(photo))
-            vec = EMBEDDER.embed_image(img)
-            vpath = STORAGE.vector_path(req.coin_id, side)
-            np.save(str(vpath), vec.astype("float32"))
-            SEARCH.add_vector(req.coin_id, side, vec)
-            done.append(side)
-            dim = int(vec.shape[0])
-        SEARCH.persist()
-        if not done:
-            return VectorRegenResponse(ok=False, coin_id=req.coin_id, error="no stored photos")
-        return VectorRegenResponse(ok=True, coin_id=req.coin_id, sides=done, dim=dim)
+        with _GPU_LOCK:
+            _ensure_gpu()
+            try:
+                sides = [req.side] if req.side else ("obverse", "reverse")
+                done: list[str] = []
+                dim = None
+                for side in sides:
+                    photo = STORAGE.photo_path(req.coin_id, side)
+                    if not photo.exists():
+                        continue
+                    img = _read_bgr(str(photo))
+                    vec = EMBEDDER.embed_image(img)
+                    vpath = STORAGE.vector_path(req.coin_id, side)
+                    np.save(str(vpath), vec.astype("float32"))
+                    SEARCH.add_vector(req.coin_id, side, vec)
+                    done.append(side)
+                    dim = int(vec.shape[0])
+                SEARCH.persist()
+                if not done:
+                    return VectorRegenResponse(ok=False, coin_id=req.coin_id, error="no stored photos")
+                return VectorRegenResponse(ok=True, coin_id=req.coin_id, sides=done, dim=dim)
+            finally:
+                _release_gpu()
 
     @app.post("/numista/search", response_model=NumistaSearchResponse)
     def numista_search_endpoint(req: NumistaSearchRequest):

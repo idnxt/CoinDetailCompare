@@ -22,6 +22,29 @@ def _faiss():
         return None
 
 
+def _read_ids(faiss_idx) -> list[int] | None:
+    """Read the coin ids stored in an IndexIDMap.
+
+    Returns None when the installed faiss build exposes no id accessor
+    (faiss >= 1.16 removed the Python binding of get_ids on IndexIDMap);
+    the caller then reconciles ids with the disk (.npy files)."""
+    n = int(faiss_idx.ntotal)
+    if n <= 0:
+        return []
+    faiss = _faiss()
+    buf = np.empty(n, dtype="int64")
+    for candidate in (faiss_idx, faiss.downcast_index(faiss_idx)):
+        getter = getattr(candidate, "get_ids", None)
+        if getter is None:
+            continue
+        try:
+            getter(buf, 0, n)
+            return [int(x) for x in buf.tolist()]
+        except Exception:
+            continue
+    return None
+
+
 class _Index:
     def __init__(self, dim: int, use_faiss: bool | None = None) -> None:
         self.dim = dim
@@ -102,8 +125,13 @@ class _Index:
         if os.path.exists(path) and self._faiss is not None:
             faiss = _faiss()
             try:
-                self._faiss = faiss.read_index(path)
-                self.ids = [int(i) for i in self._faiss.get_ids()]
+                loaded = faiss.read_index(path)
+                ids = _read_ids(loaded)
+                self._faiss = loaded
+                # faiss >= 1.16 exposes no Python accessor for IndexIDMap ids:
+                # ids may come back empty and are reconciled with the .npy
+                # files on disk by SearchEngine._sync_with_disk.
+                self.ids = ids if ids is not None else []
                 self._id_set = set(self.ids)
                 return True
             except Exception:
@@ -133,6 +161,13 @@ class SearchEngine:
         for side in _SIDES:
             disk_ids = {cid for cid, _ in self.storage.iter_vectors(side)}
             idx = self.obverse if side == "obverse" else self.reverse
+            # A faiss index loaded from file may carry no readable ids
+            # (faiss >= 1.16): trust the disk ids if the counts match.
+            if idx.using_faiss and not idx.ids and disk_ids:
+                if int(idx._faiss.ntotal) == len(disk_ids):
+                    idx.ids = sorted(disk_ids)
+                    idx._id_set = set(disk_ids)
+                    continue
             if disk_ids and disk_ids != set(idx.ids):
                 self.rebuild_from_disk()
                 break
