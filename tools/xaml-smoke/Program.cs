@@ -119,20 +119,37 @@ internal static class Program
                 var drot = (System.Windows.Media.RotateTransform)dtg.Children[1];
                 Console.WriteLine($"diff overlay: loaded={diffOverlay.Source != null} transform=({dst.ScaleX}, {drot.Angle}) etalon=({st.ScaleX}, {rt.Angle}) inSync={(dst.ScaleX == st.ScaleX && drot.Angle == rt.Angle)}");
                 Console.WriteLine($"vm.DiffImage={(vm.DiffImage != null)} status={vm.Status}");
-                Console.WriteLine("step: find similar + pick etalon");
+                Console.WriteLine("step: find similar + preview + pick etalon");
+                void WaitIdle()
+                {
+                    var frame = new System.Windows.Threading.DispatcherFrame();
+                    var waitT = new System.Windows.Threading.DispatcherTimer
+                    {
+                        Interval = TimeSpan.FromMilliseconds(200)
+                    };
+                    waitT.Tick += (s, e) => { if (!vm.IsBusy) { waitT.Stop(); frame.Continue = false; } };
+                    waitT.Start();
+                    System.Windows.Threading.Dispatcher.PushFrame(frame);
+                }
+                void WaitDiff(bool expect)
+                {
+                    var frame = new System.Windows.Threading.DispatcherFrame();
+                    var sw = System.Diagnostics.Stopwatch.StartNew();
+                    var waitT = new System.Windows.Threading.DispatcherTimer
+                    {
+                        Interval = TimeSpan.FromMilliseconds(200)
+                    };
+                    waitT.Tick += (s, e) =>
+                    {
+                        if ((vm.DiffImage != null) == expect || sw.Elapsed > TimeSpan.FromSeconds(60))
+                        { waitT.Stop(); frame.Continue = false; }
+                    };
+                    waitT.Start();
+                    System.Windows.Threading.Dispatcher.PushFrame(frame);
+                }
                 int origEtalon = vm.EtalonId ?? -1;
                 vm.FindSimilarCommand.Execute(null);
-                var frame = new System.Windows.Threading.DispatcherFrame();
-                var waitT = new System.Windows.Threading.DispatcherTimer
-                {
-                    Interval = TimeSpan.FromMilliseconds(200)
-                };
-                waitT.Tick += (s, e) =>
-                {
-                    if (!vm.IsBusy) { waitT.Stop(); frame.Continue = false; }
-                };
-                waitT.Start();
-                System.Windows.Threading.Dispatcher.PushFrame(frame);
+                WaitIdle();
                 Console.WriteLine($"similar: count={vm.SimilarCandidates.Count} status={vm.Status}");
                 if (vm.SimilarCandidates.Count > 0)
                 {
@@ -140,13 +157,29 @@ internal static class Program
                     var orig = vm.SimilarCandidates.FirstOrDefault(x => x.CoinId == origEtalon);
                     if (orig is not null)
                     {
+                        // selecting a candidate previews it in the etalon layers; the DB must not change
                         vm.SelectedSimilar = vm.SimilarCandidates[0];
-                        Console.WriteLine($"canPick={(vm.CanPickEtalon)}");
+                        WaitIdle();
+                        WaitDiff(true);
+                        Console.WriteLine($"preview: db={vm.EtalonId} (orig {origEtalon}) previewId={vm.PreviewEtalonId} photo={(vm.EtalonPhotoImage != null)} diff={(vm.DiffImage != null)} status={vm.Status}");
+                        // cancel the preview -> back to the saved etalon, DB untouched
+                        vm.ResetEtalonCommand.Execute(null);
+                        WaitIdle();
+                        WaitDiff(origEtalon > 0);
+                        Console.WriteLine($"reset preview: db={vm.EtalonId} previewId={vm.PreviewEtalonId} ok={(vm.EtalonId == origEtalon && vm.PreviewEtalonId is null)} status={vm.Status}");
+                        // commit the picked candidate as the etalon
+                        vm.SelectedSimilar = vm.SimilarCandidates[0];
+                        WaitIdle();
                         vm.PickEtalonCommand.Execute(null);
-                        Console.WriteLine($"picked: etalon={vm.EtalonId} label={vm.EtalonLabel} status={vm.Status}");
+                        WaitIdle();
+                        WaitDiff(true);
+                        Console.WriteLine($"picked: etalon={vm.EtalonId} (expected {vm.SimilarCandidates[0].CoinId}) previewId={vm.PreviewEtalonId} status={vm.Status}");
                         // restore the original etalon so the catalog data is untouched
                         vm.SelectedSimilar = orig;
+                        WaitIdle();
                         vm.PickEtalonCommand.Execute(null);
+                        WaitIdle();
+                        WaitDiff(origEtalon > 0);
                         Console.WriteLine($"restored: etalon={vm.EtalonId} (orig {origEtalon}) ok={vm.EtalonId == origEtalon}");
                     }
                     else

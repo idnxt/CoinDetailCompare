@@ -163,7 +163,10 @@
     "similar_found": "Found: {0}",
     "similar_none": "No similar coins found",
     "etalon_set": "Etalon №{0} assigned",
-    "etalon_reset": "Etalon reset"
+    "etalon_reset": "Etalon reset",
+    "preview": "Preview: #{0} (not saved yet)",
+    "preview_canceled": "Preview canceled, etalon: #{0}",
+    "preview_compare": "Preview #{0}: mean diff {1:F2}, rotation {2:F1}°"
   },
   "backend": {
     "start": "Start backend",

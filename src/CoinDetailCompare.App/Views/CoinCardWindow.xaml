@@ -26,7 +26,7 @@
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                     <CheckBox Content="{Binding CompareHeatmap, Source={StaticResource Strings}}"
                               IsChecked="{Binding ShowHeatmap}" VerticalAlignment="Center" Margin="0,0,12,0"
-                              IsEnabled="{Binding IsBase, Converter={StaticResource InverseBool}}" />
+                              IsEnabled="{Binding HasEffectiveEtalon}" />
                     <CheckBox Content="{Binding CardAnnotations, Source={StaticResource Strings}}"
                               IsChecked="{Binding ShowAnnotations}" VerticalAlignment="Center" />
                 </StackPanel>
@@ -48,7 +48,7 @@
                         </StackPanel>
                         <CheckBox Content="{Binding CardLayerDiff, Source={StaticResource Strings}}"
                                   IsChecked="{Binding ShowDiffLayer}" Margin="0,3,0,0"
-                                  IsEnabled="{Binding HasEtalon}" />
+                                   IsEnabled="{Binding HasEffectiveEtalon}" />
                     </StackPanel>
                     <StackPanel Width="200" Margin="0,0,16,0">
                         <StackPanel Orientation="Horizontal">
@@ -61,7 +61,7 @@
                         </StackPanel>
                         <CheckBox Content="{Binding CardLayerEtalonPhoto, Source={StaticResource Strings}}"
                                   IsChecked="{Binding ShowEtalonPhoto}" Margin="0,3,0,0"
-                                  IsEnabled="{Binding HasEtalon}" />
+                                  IsEnabled="{Binding HasEffectiveEtalon}" />
                         <!-- manual rotation / zoom: slider + 0.01-precision box (zoom base 100) -->
                         <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
                             <TextBlock Text="{Binding CardAngle, Source={StaticResource Strings}}"
@@ -133,7 +133,7 @@
 
                 <TextBlock Text="{Binding CardEtalonPhotoHint, Source={StaticResource Strings}}"
                            Margin="0,6,0,0" FontSize="11" Foreground="#FF888888"
-                           Visibility="{Binding HasEtalon, Converter={StaticResource BoolToVis}}" />
+                           Visibility="{Binding HasEffectiveEtalon, Converter={StaticResource BoolToVis}}" />
 
                 <TextBlock Text="{Binding AnomalyStatus}" Margin="0,8,0,0" TextWrapping="Wrap" />
                 <Button Style="{StaticResource Btn}" Margin="0,8,0,0"
@@ -151,7 +151,7 @@
                 <Button Style="{StaticResource Btn}"
                         Content="{Binding CardReset, Source={StaticResource Strings}}"
                         Command="{Binding ResetEtalonPhotoCommand}"
-                        IsEnabled="{Binding HasEtalon}" />
+                        IsEnabled="{Binding HasEffectiveEtalon}" />
             </StackPanel>
         </Border>
 
@@ -260,7 +260,7 @@
                         <Button Style="{StaticResource Btn}"
                                 Content="{Binding CardResetEtalon, Source={StaticResource Strings}}"
                                 Command="{Binding ResetEtalonCommand}"
-                                IsEnabled="{Binding HasEtalon}" />
+                                IsEnabled="{Binding HasEffectiveEtalon}" />
                     </StackPanel>
 
                     <TextBlock Text="{Binding Status}" Margin="0,12,0,0" TextWrapping="Wrap"

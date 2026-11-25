@@ -190,13 +190,22 @@ public class CoinCardViewModel : ObservableObject
         }
     }
 
-    /// <summary>True when the coin has an etalon above it.</summary>
+    /// <summary>True when the coin has an etalon above it in the DB.</summary>
     private bool _hasEtalon;
     public bool HasEtalon
     {
         get => _hasEtalon;
         private set => SetProperty(ref _hasEtalon, value);
     }
+
+    /// <summary>The etalon currently shown in the layers: the previewed
+    /// similar candidate if one is selected in the list, otherwise the
+    /// saved etalon.</summary>
+    public int? EffectiveEtalonId => _previewEtalonId ?? _etalonId;
+
+    /// <summary>True when an etalon photo / diff layer is shown (saved
+    /// etalon or a previewed candidate).</summary>
+    public bool HasEffectiveEtalon => EffectiveEtalonId is not null;
 
     private bool _showAnnotations = true;
     public bool ShowAnnotations
@@ -321,8 +330,9 @@ public class CoinCardViewModel : ObservableObject
         }
     }
 
-    /// <summary>Busy or a base coin: comparison/anomaly buttons stay disabled.</summary>
-    public bool Blocked => IsBusy || IsBase;
+    /// <summary>Busy or no effective etalon (saved or previewed):
+    /// comparison/anomaly buttons stay disabled.</summary>
+    public bool Blocked => IsBusy || EffectiveEtalonId is null;
 
     // ---- annotation layer ----
     public ObservableCollection<AnnotationItem> AnnotationItems { get; } = new();
@@ -376,12 +386,24 @@ public class CoinCardViewModel : ObservableObject
         get => _selectedSimilar;
         set
         {
-            if (SetProperty(ref _selectedSimilar, value))
-                OnPropertyChanged(nameof(CanPickEtalon));
+            if (!SetProperty(ref _selectedSimilar, value)) return;
+            OnPropertyChanged(nameof(CanPickEtalon));
+            // Selecting a candidate previews it in the etalon layers
+            // (photo + diff) without touching the DB; clearing the
+            // selection cancels the preview.
+            if (value is SimilarCandidate sc && sc.CoinId != EffectiveEtalonId)
+                PreviewCandidate(sc.CoinId);
+            else if (value is null && _previewEtalonId is not null)
+                CancelPreview();
         }
     }
 
     public bool CanPickEtalon => SelectedSimilar is not null;
+
+    // The similar candidate currently previewed in the etalon layers.
+    // Session-only: committed to the DB only by PickEtalon.
+    private int? _previewEtalonId;
+    public int? PreviewEtalonId => _previewEtalonId;
 
     public CoinCardViewModel(int coinId, AppSettings settings, BackendClient backend,
         DbService db, LocalizationService loc)
@@ -505,10 +527,10 @@ public class CoinCardViewModel : ObservableObject
         var photo = PhotoPath(c);
         BaseImage = photo is not null ? LoadImage(photo) : null;
         string side = SideNameRaw();
-        // A base coin has no etalon -> its heatmap layer is meaningless.
-        HeatmapImage = IsBase ? null : LoadIfExists(Path.Combine(_settings.CoimgDir, $"{CoinId}_{side}_heatmap.png"));
+        // No effective etalon (saved or previewed) -> no heatmap to show.
+        HeatmapImage = EffectiveEtalonId is null ? null : LoadIfExists(Path.Combine(_settings.CoimgDir, $"{CoinId}_{side}_heatmap.png"));
         // The etalon photo overlay uses the etalon's photo of the same side.
-        EtalonPhotoImage = HasEtalon && _etalonId is int eid
+        EtalonPhotoImage = EffectiveEtalonId is int eid
             ? (PhotoPath(_db.GetCoin(eid)) is string ep ? LoadImage(ep) : null)
             : null;
         AnomalyStatus = "";
@@ -516,11 +538,12 @@ public class CoinCardViewModel : ObservableObject
         _ = LoadDiffImageAsync();
     }
 
-    /// <summary>Fetch the etalon/current diff layer for the active side and
-    /// tint it with the layer color. A base coin has no etalon — no diff.</summary>
+    /// <summary>Fetch the diff layer against the effective etalon (saved or
+    /// previewed) for the active side and tint it with the layer color.
+    /// No effective etalon — no diff.</summary>
     private async Task LoadDiffImageAsync()
     {
-        if (!HasEtalon || _etalonId is not int eid)
+        if (EffectiveEtalonId is not int eid)
         {
             _diffGray = null;
             ApplyDiffLayer();
@@ -547,13 +570,14 @@ public class CoinCardViewModel : ObservableObject
             : null;
     }
 
-    /// <summary>Compare the active side with the etalon (rotation-aligned):
-    /// refreshes the status line with mean diff and rotation.</summary>
+    /// <summary>Compare the active side with the effective etalon
+    /// (saved or previewed, rotation-aligned): refreshes the status line
+    /// with mean diff and rotation.</summary>
     private async Task RunCompareAsync()
     {
         var c = _db.GetCoin(CoinId);
         var photo = PhotoPath(c);
-        if (photo is null || _etalonId is not int eid) return;
+        if (photo is null || EffectiveEtalonId is not int eid) return;
         IsBusy = true;
         try
         {
@@ -568,7 +592,10 @@ public class CoinCardViewModel : ObservableObject
                 Status = $"{T("status.error")}: {resp?.error ?? "no response"}";
                 return;
             }
-            Status = string.Format(T("card.compare_done"), resp.mean_diff, resp.rotation_deg);
+            // During a preview the status line keeps the previewed coin id.
+            Status = _previewEtalonId is int pe
+                ? string.Format(T("card.preview_compare"), pe, resp.mean_diff, resp.rotation_deg)
+                : string.Format(T("card.compare_done"), resp.mean_diff, resp.rotation_deg);
             // the compare succeeded: refresh the diff layer (also retries
             // after the backend came back)
             _ = LoadDiffImageAsync();
@@ -613,12 +640,12 @@ public class CoinCardViewModel : ObservableObject
     {
         var c = _db.GetCoin(CoinId);
         var photo = PhotoPath(c);
-        if (photo is null || IsBase) return;
+        if (photo is null || EffectiveEtalonId is null) return;
         IsBusy = true;
         try
         {
             var refs = new List<int>();
-            if (_etalonId is int eid) refs.Add(eid);
+            if (EffectiveEtalonId is int eid) refs.Add(eid);
             var resp = await _backend.AnomalyAsync(new AnomalyRequest(
                 crop_path: photo,
                 side: SideNameRaw(),
@@ -681,7 +708,7 @@ public class CoinCardViewModel : ObservableObject
             }
             if (!string.IsNullOrWhiteSpace(Name))
             {
-                var t = c.TypeId is int tid ? _db.GetCoinType(tid) : new CoinType();
+                var t = c.TypeId is int tid ? _db.GetCoinType(tid) ?? new CoinType() : new CoinType();
                 t.Name = Name;
                 c.TypeId = _db.SaveCoinType(t);
             }
@@ -759,15 +786,61 @@ public class CoinCardViewModel : ObservableObject
         return $"{rank}. {core}";
     }
 
-    /// <summary>Assign the selected candidate as this coin's etalon.</summary>
+    /// <summary>Preview a candidate in the etalon layers without committing
+    /// it: its photo goes to the etalon-photo layer, the diff layer is
+    /// rebuilt against it, compare/anomaly are re-run. The DB is untouched
+    /// until "Make etalon" (PickEtalon) is pressed.</summary>
+    private void PreviewCandidate(int coinId)
+    {
+        _previewEtalonId = coinId;
+        // a new etalon preview starts from the identity transform
+        EtalonPhotoAngle = 0;
+        EtalonPhotoScale = 1.0;
+        RefreshImages();
+        Status = string.Format(T("card.preview"), coinId);
+        _ = RunCompareAsync();
+        _ = RunAnomalyAsync();
+    }
+
+    /// <summary>Drop the preview and restore the card to the saved etalon
+    /// (or to no etalon when there is none).</summary>
+    private void CancelPreview()
+    {
+        _previewEtalonId = null;
+        EtalonPhotoAngle = 0;
+        EtalonPhotoScale = 1.0;
+        RefreshImages();
+        if (_etalonId is int eid)
+        {
+            Status = string.Format(T("card.preview_canceled"), eid);
+            _ = RunCompareAsync();
+            _ = RunAnomalyAsync();
+        }
+        else
+        {
+            Status = T("card.etalon_reset");
+        }
+    }
+
+    /// <summary>Commit the previewed (selected) candidate as this coin's
+    /// etalon in the DB.</summary>
     private void PickEtalon()
     {
         if (SelectedSimilar is not SimilarCandidate sc) return;
         ApplyEtalon(sc.CoinId);
     }
 
-    /// <summary>Clear this coin's etalon (it becomes a base coin again).</summary>
-    private void ResetEtalon() => ApplyEtalon(null);
+    /// <summary>Cancel the preview if one is active; otherwise clear the
+    /// saved etalon (the coin becomes a base coin again).</summary>
+    private void ResetEtalon()
+    {
+        if (_previewEtalonId is not null)
+        {
+            CancelPreview();
+            return;
+        }
+        ApplyEtalon(null);
+    }
 
     /// <summary>Set (or clear) the etalon in the DB and refresh every card
     /// state that depends on it: base/has-etalon flags, label, photos,
@@ -781,6 +854,7 @@ public class CoinCardViewModel : ObservableObject
             c.EtalonId = etalonId;
             _db.SaveCoin(c);
             _etalonId = etalonId;
+            _previewEtalonId = null; // the saved etalon becomes the effective one
             EtalonLabel = etalonId is int eid ? string.Format(T("card.etalon"), eid) : T("card.no_etalon");
             IsBase = etalonId is null;
             HasEtalon = etalonId is not null;
