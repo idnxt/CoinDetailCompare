@@ -353,6 +353,36 @@ public class CoinCardViewModel : ObservableObject
 
     public List<string> AnnotationToolItems { get; } = new();
 
+    // ---- find similar: search-index candidates + etalon selection ----
+
+    /// <summary>One search candidate, shown in the "similar coins" list.</summary>
+    public class SimilarCandidate
+    {
+        public int CoinId { get; init; }
+        public string Label { get; init; } = "";
+        public override string ToString() => Label;
+    }
+
+    private ObservableCollection<SimilarCandidate> _similarCandidates = new();
+    public ObservableCollection<SimilarCandidate> SimilarCandidates
+    {
+        get => _similarCandidates;
+        private set => SetProperty(ref _similarCandidates, value);
+    }
+
+    private SimilarCandidate? _selectedSimilar;
+    public SimilarCandidate? SelectedSimilar
+    {
+        get => _selectedSimilar;
+        set
+        {
+            if (SetProperty(ref _selectedSimilar, value))
+                OnPropertyChanged(nameof(CanPickEtalon));
+        }
+    }
+
+    public bool CanPickEtalon => SelectedSimilar is not null;
+
     public CoinCardViewModel(int coinId, AppSettings settings, BackendClient backend,
         DbService db, LocalizationService loc)
     {
@@ -387,6 +417,9 @@ public class CoinCardViewModel : ObservableObject
         UndoAnnotationCommand = new RelayCommand(UndoAnnotation);
         ClearAnnotationsCommand = new RelayCommand(ClearAnnotations);
         SaveAnnotationsCommand = new RelayCommand(SaveAnnotations);
+        FindSimilarCommand = new RelayCommand(async () => await FindSimilarAsync());
+        PickEtalonCommand = new RelayCommand(PickEtalon);
+        ResetEtalonCommand = new RelayCommand(ResetEtalon);
 
         _ = InitAsync();
     }
@@ -400,6 +433,9 @@ public class CoinCardViewModel : ObservableObject
     public RelayCommand UndoAnnotationCommand { get; }
     public RelayCommand ClearAnnotationsCommand { get; }
     public RelayCommand SaveAnnotationsCommand { get; }
+    public RelayCommand FindSimilarCommand { get; }
+    public RelayCommand PickEtalonCommand { get; }
+    public RelayCommand ResetEtalonCommand { get; }
 
     public string T(string key) => _loc.T(key);
 
@@ -651,6 +687,117 @@ public class CoinCardViewModel : ObservableObject
             }
             _db.SaveCoin(c);
             Status = T("status.saved");
+        }
+        catch (System.Exception ex)
+        {
+            Status = $"{T("status.error")}: {ex.Message}";
+        }
+    }
+
+    // ---- find similar / pick the etalon ----
+
+    /// <summary>Search the catalog index for coins similar to this one
+    /// (using all its available sides) and list them for etalon picking.</summary>
+    private async Task FindSimilarAsync()
+    {
+        var c = _db.GetCoin(CoinId);
+        var photo = PhotoPath(c);
+        if (photo is null)
+        {
+            Status = T("status.error");
+            return;
+        }
+        IsBusy = true;
+        try
+        {
+            string? ob = c is { ObversePhoto: not "" } && File.Exists(c.ObversePhoto) ? c.ObversePhoto : null;
+            string? rv = c is { ReversePhoto: not "" } && File.Exists(c.ReversePhoto) ? c.ReversePhoto : null;
+            var resp = await _backend.SearchAsync(new SearchRequest(
+                crop_path: photo,
+                side: SideNameRaw(),
+                obverse_path: ob,
+                reverse_path: rv,
+                candidate_type_id: null,
+                etalon_quality: null,
+                topk: 10));
+            var list = new List<SimilarCandidate>();
+            if (resp is not null)
+            {
+                list = resp.candidates
+                    .Where(x => x.coin_id != CoinId)
+                    .OrderByDescending(x => x.overall_pct)
+                    .Take(10)
+                    .Select((x, i) => new SimilarCandidate
+                    {
+                        CoinId = x.coin_id,
+                        Label = BuildSimilarLabel(i + 1, x),
+                    })
+                    .ToList();
+            }
+            SimilarCandidates = new ObservableCollection<SimilarCandidate>(list);
+            SelectedSimilar = null;
+            Status = list.Count > 0
+                ? string.Format(T("card.similar_found"), list.Count)
+                : T("card.similar_none");
+        }
+        catch (System.Exception ex)
+        {
+            Status = $"{T("status.error")}: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>Human-readable candidate line: rank, coin id, name, match %.</summary>
+    private string BuildSimilarLabel(int rank, CandidateDto x)
+    {
+        string name = x.type_id is int tid ? _db.GetCoinType(tid)?.Name ?? "" : "";
+        string pct = x.overall_pct.ToString("F1", System.Globalization.CultureInfo.InvariantCulture);
+        string core = name is "" ? $"№{x.coin_id} ({pct}%)" : $"№{x.coin_id} — {name} ({pct}%)";
+        return $"{rank}. {core}";
+    }
+
+    /// <summary>Assign the selected candidate as this coin's etalon.</summary>
+    private void PickEtalon()
+    {
+        if (SelectedSimilar is not SimilarCandidate sc) return;
+        ApplyEtalon(sc.CoinId);
+    }
+
+    /// <summary>Clear this coin's etalon (it becomes a base coin again).</summary>
+    private void ResetEtalon() => ApplyEtalon(null);
+
+    /// <summary>Set (or clear) the etalon in the DB and refresh every card
+    /// state that depends on it: base/has-etalon flags, label, photos,
+    /// diff layer, compare and anomaly.</summary>
+    private void ApplyEtalon(int? etalonId)
+    {
+        try
+        {
+            var c = _db.GetCoin(CoinId);
+            if (c is null) return;
+            c.EtalonId = etalonId;
+            _db.SaveCoin(c);
+            _etalonId = etalonId;
+            EtalonLabel = etalonId is int eid ? string.Format(T("card.etalon"), eid) : T("card.no_etalon");
+            IsBase = etalonId is null;
+            HasEtalon = etalonId is not null;
+            // a new etalon starts from the identity transform
+            EtalonPhotoAngle = 0;
+            EtalonPhotoScale = 1.0;
+            RefreshImages();
+            if (HasEtalon && etalonId is int newEid)
+            {
+                Status = string.Format(T("card.etalon_set"), newEid);
+                _ = RunCompareAsync();
+                _ = RunAnomalyAsync();
+            }
+            else
+            {
+                Status = T("card.etalon_reset");
+            }
         }
         catch (System.Exception ex)
         {

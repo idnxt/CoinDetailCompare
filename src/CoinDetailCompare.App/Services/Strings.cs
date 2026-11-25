@@ -183,6 +183,14 @@ public class Strings : INotifyPropertyChanged
     public string CardEtalonPhotoHint => this["card.etalon_photo_hint"];
     public string CardAngle => this["card.angle"];
     public string CardScale => this["card.scale"];
+    public string CardSimilar => this["card.similar"];
+    public string CardFindSimilar => this["card.find_similar"];
+    public string CardPickEtalon => this["card.pick_etalon"];
+    public string CardResetEtalon => this["card.reset_etalon"];
+    public string CardSimilarFound => this["card.similar_found"];
+    public string CardSimilarNone => this["card.similar_none"];
+    public string CardEtalonSet => this["card.etalon_set"];
+    public string CardEtalonReset => this["card.etalon_reset"];
 
     // backend
     public string BackendStart => this["backend.start"];

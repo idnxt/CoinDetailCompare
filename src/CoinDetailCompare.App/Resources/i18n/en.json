@@ -155,7 +155,15 @@
     "etalon_photo_hint": "Etalon photo: drag — rotate around center, wheel — zoom (the diff layer moves with it)",
     "diff_unavailable": "Diff layer unavailable (backend is offline)",
     "angle": "Angle",
-    "scale": "Scale"
+    "scale": "Scale",
+    "similar": "Similar coins",
+    "find_similar": "Find similar",
+    "pick_etalon": "Make etalon",
+    "reset_etalon": "Reset etalon",
+    "similar_found": "Found: {0}",
+    "similar_none": "No similar coins found",
+    "etalon_set": "Etalon №{0} assigned",
+    "etalon_reset": "Etalon reset"
   },
   "backend": {
     "start": "Start backend",

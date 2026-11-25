@@ -242,6 +242,27 @@
                                 Command="{Binding SaveAnnotationsCommand}" />
                     </StackPanel>
 
+                    <!-- find similar / pick the etalon for this coin -->
+                    <TextBlock Style="{StaticResource Title}" Margin="0,16,0,8"
+                               Text="{Binding CardSimilar, Source={StaticResource Strings}}" />
+                    <Button Style="{StaticResource Btn}"
+                            Content="{Binding CardFindSimilar, Source={StaticResource Strings}}"
+                            Command="{Binding FindSimilarCommand}"
+                            IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}" />
+                    <ListBox ItemsSource="{Binding SimilarCandidates}"
+                             SelectedItem="{Binding SelectedSimilar}"
+                             Margin="0,6,0,6" MaxHeight="170" />
+                    <StackPanel Orientation="Horizontal">
+                        <Button Style="{StaticResource Btn}" Margin="0,0,6,0"
+                                Content="{Binding CardPickEtalon, Source={StaticResource Strings}}"
+                                Command="{Binding PickEtalonCommand}"
+                                IsEnabled="{Binding CanPickEtalon}" />
+                        <Button Style="{StaticResource Btn}"
+                                Content="{Binding CardResetEtalon, Source={StaticResource Strings}}"
+                                Command="{Binding ResetEtalonCommand}"
+                                IsEnabled="{Binding HasEtalon}" />
+                    </StackPanel>
+
                     <TextBlock Text="{Binding Status}" Margin="0,12,0,0" TextWrapping="Wrap"
                                Foreground="#FF555555" />
                 </StackPanel>

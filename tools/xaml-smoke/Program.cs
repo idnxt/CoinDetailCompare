@@ -119,6 +119,41 @@ internal static class Program
                 var drot = (System.Windows.Media.RotateTransform)dtg.Children[1];
                 Console.WriteLine($"diff overlay: loaded={diffOverlay.Source != null} transform=({dst.ScaleX}, {drot.Angle}) etalon=({st.ScaleX}, {rt.Angle}) inSync={(dst.ScaleX == st.ScaleX && drot.Angle == rt.Angle)}");
                 Console.WriteLine($"vm.DiffImage={(vm.DiffImage != null)} status={vm.Status}");
+                Console.WriteLine("step: find similar + pick etalon");
+                int origEtalon = vm.EtalonId ?? -1;
+                vm.FindSimilarCommand.Execute(null);
+                var frame = new System.Windows.Threading.DispatcherFrame();
+                var waitT = new System.Windows.Threading.DispatcherTimer
+                {
+                    Interval = TimeSpan.FromMilliseconds(200)
+                };
+                waitT.Tick += (s, e) =>
+                {
+                    if (!vm.IsBusy) { waitT.Stop(); frame.Continue = false; }
+                };
+                waitT.Start();
+                System.Windows.Threading.Dispatcher.PushFrame(frame);
+                Console.WriteLine($"similar: count={vm.SimilarCandidates.Count} status={vm.Status}");
+                if (vm.SimilarCandidates.Count > 0)
+                {
+                    foreach (var cand in vm.SimilarCandidates) Console.WriteLine("  cand: " + cand);
+                    var orig = vm.SimilarCandidates.FirstOrDefault(x => x.CoinId == origEtalon);
+                    if (orig is not null)
+                    {
+                        vm.SelectedSimilar = vm.SimilarCandidates[0];
+                        Console.WriteLine($"canPick={(vm.CanPickEtalon)}");
+                        vm.PickEtalonCommand.Execute(null);
+                        Console.WriteLine($"picked: etalon={vm.EtalonId} label={vm.EtalonLabel} status={vm.Status}");
+                        // restore the original etalon so the catalog data is untouched
+                        vm.SelectedSimilar = orig;
+                        vm.PickEtalonCommand.Execute(null);
+                        Console.WriteLine($"restored: etalon={vm.EtalonId} (orig {origEtalon}) ok={vm.EtalonId == origEtalon}");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"orig etalon {origEtalon} not in candidate list - pick test skipped");
+                    }
+                }
                 Console.WriteLine("step: create picker");
                 var picker = new CoinDetailCompare.App.Views.ColorPickerWindow(
                     System.Windows.Media.Color.FromRgb(0x00, 0xE5, 0xFF)) { Owner = coinCard };
