@@ -14,6 +14,7 @@ public partial class App : Application
         var baseDir = AppDomain.CurrentDomain.BaseDirectory;
         var settingsSvc = new SettingsService(baseDir);
         var settings = settingsSvc.Current;
+        settings.Persist = () => settingsSvc.Save();
 
         var backend = new BackendClient(settings.BackendBaseUrl);
         var db = new DbService(settings.DbPath, settings.SchemaPath);

@@ -1,11 +1,12 @@
 """FastAPI application: local HTTP API for the C# desktop app."""
 from __future__ import annotations
 
+import gc
 import time
 from pathlib import Path
 
 import numpy as np
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
 
 from . import __version__
 from .anomaly import AnomalyDetector
@@ -46,15 +47,77 @@ ANOMALY = AnomalyDetector(CONFIG, STORAGE, EMBEDDER)
 NUMISTA = NumistaClient(CONFIG)
 
 
+def _cuda_ok() -> bool:
+    try:
+        import torch
+        return torch.cuda.is_available()
+    except Exception:
+        return False
+
+
+def _move_models(device: str) -> None:
+    """Move every torch model (embedder, anomaly detector) to `device`."""
+    import torch
+
+    dev = torch.device(device)
+    model = getattr(EMBEDDER, "model", None)
+    if model is not None and hasattr(model, "set_device"):
+        try:
+            model.set_device(dev)
+        except Exception:
+            pass
+    backend = getattr(ANOMALY, "_backend", None)
+    if backend:
+        name, det = backend
+        if name == "anomalydino":
+            try:
+                det.to(dev)
+            except Exception:
+                pass
+
+
+def _ensure_gpu() -> None:
+    """Load the models onto the GPU before a GPU request (no-op w/o CUDA)."""
+    if CONFIG.device == "gpu" and _cuda_ok():
+        try:
+            _move_models("cuda")
+        except Exception:
+            pass
+
+
+def _release_gpu() -> None:
+    """Fully empty the GPU after a request.
+
+    Models are parked on the CPU and the torch caching-allocator pool is
+    handed back to the OS, so the backend leaves *no* VRAM behind between
+    tasks (single-user app). GPU requests re-arm the models via _ensure_gpu;
+    the per-request device transfer over PCIe is far cheaper than holding a
+    couple of GB of VRAM all the time."""
+    if not _cuda_ok():
+        return
+    try:
+        import torch
+        _move_models("cpu")
+        gc.collect()
+        torch.cuda.empty_cache()
+    except Exception:
+        pass  # never break a response because of housekeeping
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="CoinDetailCompare Backend", version=__version__)
 
+    @app.middleware("http")
+    async def _free_gpu_after_request(request: Request, call_next):
+        response = await call_next(request)
+        _release_gpu()
+        return response
+
     @app.get("/health")
     def health():
-        # Report the device the embedder *actually* runs on (verified by a
-        # real CUDA probe at load time), not the configured wish.
-        model = getattr(EMBEDDER, "model", None)
-        device = str(model.device) if model is not None else "cpu"
+        # Report the device the models run on when doing work (CUDA is
+        # re-armed per request; between requests everything lives on the CPU).
+        device = "cuda" if (CONFIG.device == "gpu" and _cuda_ok()) else "cpu"
         return {
             "status": "ok",
             "version": __version__,
@@ -93,6 +156,7 @@ def create_app() -> FastAPI:
     @app.post("/search", response_model=SearchResponse)
     def search_endpoint(req: SearchRequest):
         try:
+            _ensure_gpu()
             topk = req.topk or CONFIG.topk
             ob_path = req.obverse_path or (req.crop_path if req.side == "obverse" else None)
             rev_path = req.reverse_path or (req.crop_path if req.side == "reverse" else None)
@@ -135,6 +199,7 @@ def create_app() -> FastAPI:
         try:
             import shutil
 
+            _ensure_gpu()
             sides: list[EmbedSideResult] = []
             for side in ("obverse", "reverse"):
                 src = req.obverse_path if side == "obverse" else req.reverse_path
@@ -164,6 +229,8 @@ def create_app() -> FastAPI:
     @app.post("/anomaly", response_model=AnomalyResponse)
     def anomaly_endpoint(req: AnomalyRequest):
         try:
+            if (req.device or "").lower() != "cpu":
+                _ensure_gpu()
             result = ANOMALY.detect(
                 crop_path=req.crop_path,
                 side=req.side,
@@ -190,6 +257,7 @@ def create_app() -> FastAPI:
         from .diffmap import aligned_pair, back_to_query, diff_image, project_2d
 
         try:
+            _ensure_gpu()
             query = _read_bgr(req.crop_path)
             etalon_path = STORAGE.photo_path(req.etalon_coin_id, req.side)
             etalon = _read_bgr(str(etalon_path))
@@ -249,6 +317,7 @@ def create_app() -> FastAPI:
         from .diffmap import project_2d
 
         try:
+            _ensure_gpu()
             vectors = [_load_vector(req.coin_id, req.side)]
             labels = [f"#{req.coin_id}"]
             is_query = [True]
@@ -271,11 +340,52 @@ def create_app() -> FastAPI:
         except Exception as exc:
             return VectorProjectResponse(ok=False, error=str(exc))
 
+    @app.get("/compare/image")
+    def compare_image_endpoint(coin_id: int, etalon_coin_id: int, side: str):
+        """Transparent diff layer between the coin and its etalon (one side):
+        direct |a - b| of the two raw crop photos, no rotation alignment
+        (the card aligns the etalon photo manually).  White pixels whose
+        alpha follows the diff intensity (0 outside the coin disc); the card
+        tints the grayscale draft client-side (color/opacity settings)."""
+        import cv2  # type: ignore
+
+        try:
+            qpath = STORAGE.photo_path(coin_id, side)
+            epath = STORAGE.photo_path(etalon_coin_id, side)
+            if not qpath.exists() or not epath.exists():
+                raise FileNotFoundError(f"missing photos: {qpath} / {epath}")
+            query = _read_bgr(str(qpath))
+            etalon = _read_bgr(str(epath))
+            hq, wq = query.shape[:2]
+            if etalon.shape[:2] != (hq, wq):
+                etalon = cv2.resize(etalon, (wq, hq), interpolation=cv2.INTER_LINEAR)
+            ga = cv2.cvtColor(query, cv2.COLOR_BGR2GRAY).astype("float32")
+            gb = cv2.cvtColor(etalon, cv2.COLOR_BGR2GRAY).astype("float32")
+            d = np.abs(ga - gb)
+            # The tight square crop: the coin is the inscribed circle.
+            r = int(0.498 * min(hq, wq))
+            y, x = np.ogrid[:hq, :wq]
+            inside = (x - wq / 2) ** 2 + (y - hq / 2) ** 2 <= r * r
+            peak = float(d[inside].max()) if inside.any() else 0.0
+            if peak > 1e-6:
+                d = d / peak * 255.0
+            d = np.where(inside, np.clip(d, 0, 255), 0).astype("uint8")
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc))
+        rgba = np.zeros((hq, wq, 4), dtype="uint8")
+        rgba[..., :3] = 255
+        rgba[..., 3] = d
+        ok, buf = cv2.imencode(".png", rgba)
+        if not ok:
+            raise HTTPException(status_code=500, detail="could not encode PNG")
+        return Response(content=buf.tobytes(), media_type="image/png")
+
     @app.post("/vector/regenerate", response_model=VectorRegenResponse)
     def vector_regenerate_endpoint(req: VectorRegenRequest):
         """Re-embed the stored photo(s) of a coin, replace its .npy vector and
         refresh the FAISS entry (an etalon has no heatmap to rebuild, but it
         always has a vector)."""
+        _ensure_gpu()
         sides = [req.side] if req.side else ("obverse", "reverse")
         done: list[str] = []
         dim = None

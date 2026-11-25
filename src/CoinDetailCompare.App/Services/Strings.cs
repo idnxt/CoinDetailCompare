@@ -36,23 +36,15 @@ public class Strings : INotifyPropertyChanged
     public string AppTitle => this["app.title"];
 
     // capture
-    public string CaptureSection => this["capture.section"];
     public string CaptureAlbum => this["capture.album"];
     public string CapturePage => this["capture.page"];
     public string CaptureOrder => this["capture.order"];
-    public string CaptureRotation => this["capture.rotation"];
     public string CaptureShootObverse => this["capture.shoot_obverse"];
     public string CaptureShootReverse => this["capture.shoot_reverse"];
     public string CaptureLoadObverse => this["capture.load_obverse"];
     public string CaptureLoadReverse => this["capture.load_reverse"];
     public string CaptureSwapSides => this["capture.swap_sides"];
-    public string CaptureBatchMode => this["capture.batch_mode"];
-    public string CaptureBatchCoins => this["capture.batch_coins"];
     public string CaptureOpenCamera => this["capture.open_camera"];
-    public string CaptureStartBatch => this["capture.start_batch"];
-    public string CaptureFrame => this["capture.capture_frame"];
-    public string CaptureCancelBatch => this["capture.cancel_batch"];
-    public string CaptureSaveAll => this["capture.save_all"];
     public string CaptureObverse => this["capture.obverse"];
     public string CaptureReverse => this["capture.reverse"];
     public string CaptureCameraOffline => this["capture.camera_offline"];
@@ -60,6 +52,9 @@ public class Strings : INotifyPropertyChanged
     public string CaptureShootObverseKey => this["capture.shoot_obverse_key"];
     public string CaptureShootReverseKey => this["capture.shoot_reverse_key"];
     public string CaptureClose => this["capture.close"];
+    public string CaptureNext => this["capture.next"];
+    public string CaptureExpand => this["capture.expand"];
+    public string CaptureCollapse => this["capture.collapse"];
     public string CaptureHotkeysHint => this["capture.hotkeys_hint"];
 
     // compare
@@ -180,6 +175,22 @@ public class Strings : INotifyPropertyChanged
     public string CardRunCompare => this["card.run_compare"];
     public string CardRegenVector => this["card.regenerate_vector"];
     public string CardVectorRecreated => this["card.vector_recreated"];
+    public string CardLayerDiff => this["card.layer_diff"];
+    public string CardDiffUnavailable => this["card.diff_unavailable"];
+    public string CardLayerEtalonPhoto => this["card.layer_etalon_photo"];
+    public string CardOpacity => this["card.opacity"];
+    public string CardReset => this["card.reset"];
+    public string CardEtalonPhotoHint => this["card.etalon_photo_hint"];
+    public string CardAngle => this["card.angle"];
+    public string CardScale => this["card.scale"];
+
+    // backend
+    public string BackendStart => this["backend.start"];
+    public string BackendStop => this["backend.stop"];
+    public string BackendStarting => this["backend.starting"];
+    public string BackendStopping => this["backend.stopping"];
+    public string BackendUp => this["backend.up"];
+    public string BackendDown => this["backend.down"];
 
     // gpu
     public string GpuSetupTitle => this["gpu.title"];

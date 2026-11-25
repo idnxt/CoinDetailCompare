@@ -5,6 +5,18 @@ using CoinDetailCompare.App.Models;
 
 namespace CoinDetailCompare.App.Services;
 
+/// <summary>
+/// Persisted display settings of one coin-card layer: visible (checkbox),
+/// overlay color and opacity in percent (0-100).
+/// </summary>
+public class CardLayerSettings
+{
+    public bool Enabled { get; set; } = true;
+    /// <summary>#AARRGGBB (red: the diff layer's draft color).</summary>
+    public string Color { get; set; } = "#FFFF3030";
+    public double Opacity { get; set; } = 50;
+}
+
 /// <summary>Application settings (appsettings.json).</summary>
 public class AppSettings
 {
@@ -29,8 +41,17 @@ public class AppSettings
     public string UiLanguage { get; set; } = "ru";
     public List<string> EnabledLanguages { get; set; } = new() { "ru", "en" };
 
+    // Card layers: applied to every opened card, persisted on change.
+    public CardLayerSettings LayerDiff { get; set; } = new();
+    public CardLayerSettings LayerEtalonPhoto { get; set; } = new();
+
     [JsonIgnore]
     public string BackendBaseUrl => $"http://{BackendHost}:{BackendPort}";
+
+    /// <summary>Wired by the app to SettingsService.Save; VMs call it after
+    /// mutating settings (e.g. the persisted card-layer options).</summary>
+    [JsonIgnore]
+    public Action? Persist;
 }
 
 public class SettingsService

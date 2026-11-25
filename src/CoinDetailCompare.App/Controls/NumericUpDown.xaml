@@ -1,0 +1,25 @@
+<UserControl x:Class="CoinDetailCompare.App.Controls.NumericUpDown"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             FontSize="11">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <TextBox x:Name="TextBox" Text="0.00" VerticalContentAlignment="Center"
+                 BorderBrush="#FF555555" BorderThickness="1"
+                 PreviewKeyDown="OnPreviewKeyDown" LostFocus="OnLostFocus"
+                 ToolTip="Enter — применить, стрелки — ±0.01" />
+        <Grid Grid.Column="1" Width="14">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <RepeatButton x:Name="UpButton" FontSize="7" Padding="0" Content="▲"
+                          BorderBrush="#FF555555" Click="OnStepUp" />
+            <RepeatButton x:Name="DownButton" Grid.Row="1" FontSize="7" Padding="0" Content="▼"
+                          BorderBrush="#FF555555" Click="OnStepDown" />
+        </Grid>
+    </Grid>
+</UserControl>

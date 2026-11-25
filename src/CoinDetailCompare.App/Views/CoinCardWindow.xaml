@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:controls="clr-namespace:CoinDetailCompare.App.Controls"
         Title="Coin card"
-        Width="1080" Height="660"
+        Width="1080" Height="858"
         WindowStartupLocation="CenterScreen">
     <Grid Margin="12">
         <Grid.ColumnDefinitions>
@@ -22,31 +22,118 @@
                     <TextBlock Style="{StaticResource Title}" Text="{Binding SideName}" />
                 </DockPanel>
 
-                <!-- layer toggles -->
+                <!-- layer toggles: heatmap + annotations -->
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                     <CheckBox Content="{Binding CompareHeatmap, Source={StaticResource Strings}}"
                               IsChecked="{Binding ShowHeatmap}" VerticalAlignment="Center" Margin="0,0,12,0"
                               IsEnabled="{Binding IsBase, Converter={StaticResource InverseBool}}" />
-                    <CheckBox Content="{Binding CompareDiff, Source={StaticResource Strings}}"
-                              IsChecked="{Binding ShowDiff}" VerticalAlignment="Center" Margin="0,0,12,0" />
                     <CheckBox Content="{Binding CardAnnotations, Source={StaticResource Strings}}"
                               IsChecked="{Binding ShowAnnotations}" VerticalAlignment="Center" />
+                </StackPanel>
+
+                <!-- vector/photo layers: color picker + opacity above each layer label -->
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                    <StackPanel Width="180" Margin="0,0,16,0">
+                        <StackPanel Orientation="Horizontal">
+                            <Button x:Name="DiffColorBtn" Width="22" Height="14" Padding="0"
+                                    BorderBrush="#FF555555" BorderThickness="1"
+                                    ToolTip="{Binding CardOpacity, Source={StaticResource Strings}}"
+                                    Click="OnPickDiffColor" />
+                            <Slider x:Name="DiffOpacitySlider" Width="66" Margin="4,0,0,0"
+                                    Minimum="0" Maximum="100" VerticalAlignment="Center"
+                                    Value="{Binding DiffOpacity}"
+                                    ToolTip="{Binding CardOpacity, Source={StaticResource Strings}}" />
+                            <TextBlock Text="{Binding DiffOpacity}" VerticalAlignment="Center"
+                                       Margin="3,0,0,0" FontSize="11" />
+                        </StackPanel>
+                        <CheckBox Content="{Binding CardLayerDiff, Source={StaticResource Strings}}"
+                                  IsChecked="{Binding ShowDiffLayer}" Margin="0,3,0,0"
+                                  IsEnabled="{Binding HasEtalon}" />
+                    </StackPanel>
+                    <StackPanel Width="200" Margin="0,0,16,0">
+                        <StackPanel Orientation="Horizontal">
+                            <Slider x:Name="EtalonPhotoOpacitySlider" Width="66"
+                                    Minimum="0" Maximum="100" VerticalAlignment="Center"
+                                    Value="{Binding EtalonPhotoOpacity}"
+                                    ToolTip="{Binding CardOpacity, Source={StaticResource Strings}}" />
+                            <TextBlock Text="{Binding EtalonPhotoOpacity}" VerticalAlignment="Center"
+                                       Margin="3,0,0,0" FontSize="11" />
+                        </StackPanel>
+                        <CheckBox Content="{Binding CardLayerEtalonPhoto, Source={StaticResource Strings}}"
+                                  IsChecked="{Binding ShowEtalonPhoto}" Margin="0,3,0,0"
+                                  IsEnabled="{Binding HasEtalon}" />
+                        <!-- manual rotation / zoom: slider + 0.01-precision box (zoom base 100) -->
+                        <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                            <TextBlock Text="{Binding CardAngle, Source={StaticResource Strings}}"
+                                       VerticalAlignment="Center" Margin="0,0,4,0" />
+                            <Slider x:Name="EtalonPhotoAngleSlider" Width="66" Minimum="-180" Maximum="180"
+                                    Value="{Binding EtalonPhotoAngle}" VerticalAlignment="Center" />
+                            <controls:NumericUpDown x:Name="AngleBox" Width="74" Margin="3,0,0,0"
+                                                   Value="{Binding EtalonPhotoAngle, Mode=TwoWay}"
+                                                   Minimum="-180" Maximum="180" Step="0.01"
+                                                   VerticalAlignment="Center" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                            <TextBlock Text="{Binding CardScale, Source={StaticResource Strings}}"
+                                       VerticalAlignment="Center" Margin="0,0,4,0" />
+                            <Slider x:Name="EtalonPhotoScaleSlider" Width="66" Minimum="80" Maximum="120"
+                                    Value="{Binding EtalonPhotoScalePct}" VerticalAlignment="Center" />
+                            <controls:NumericUpDown x:Name="ScaleBox" Width="74" Margin="3,0,0,0"
+                                                   Value="{Binding EtalonPhotoScalePct, Mode=TwoWay}"
+                                                   Minimum="80" Maximum="120" Step="0.01"
+                                                   VerticalAlignment="Center" />
+                        </StackPanel>
+                    </StackPanel>
                 </StackPanel>
 
                 <!-- base photo + overlays -->
                 <Grid>
                     <Image Source="{Binding BaseImage}" Stretch="Uniform" />
+                    <Image Source="{Binding HeatmapImage}" Stretch="Uniform"
+                           Opacity="0.55"
+                           Visibility="{Binding ShowHeatmap, Converter={StaticResource BoolToVis}}" />
+                    <!-- diff layer (etalon/current): direct |a-b| of the raw crops;
+                         follows the etalon photo's rotation/zoom (same transform) -->
+                    <Image x:Name="DiffOverlay" Source="{Binding DiffImage}" Stretch="Uniform"
+                           Opacity="{Binding DiffOpacity, Converter={StaticResource Opacity01}}"
+                           Visibility="{Binding ShowDiffLayer, Converter={StaticResource BoolToVis}}"
+                           RenderTransformOrigin="0.5,0.5">
+                        <Image.RenderTransform>
+                            <TransformGroup>
+                                <ScaleTransform ScaleX="{Binding EtalonPhotoScale}"
+                                                ScaleY="{Binding EtalonPhotoScale}" />
+                                <RotateTransform Angle="{Binding EtalonPhotoAngle}" />
+                            </TransformGroup>
+                        </Image.RenderTransform>
+                    </Image>
+                    <!-- manual etalon photo: drag = rotate around center, wheel = zoom -->
+                    <Image x:Name="EtalonPhotoOverlay" Source="{Binding EtalonPhotoImage}"
+                           Stretch="Uniform"
+                           Opacity="{Binding EtalonPhotoOpacity, Converter={StaticResource Opacity01}}"
+                           Visibility="{Binding ShowEtalonPhoto, Converter={StaticResource BoolToVis}}"
+                           RenderTransformOrigin="0.5,0.5"
+                           Cursor="SizeAll"
+                           MouseLeftButtonDown="OnEtalonPhotoMouseDown"
+                           MouseMove="OnEtalonPhotoMouseMove"
+                           MouseLeftButtonUp="OnEtalonPhotoMouseUp"
+                           MouseWheel="OnEtalonPhotoWheel">
+                        <Image.RenderTransform>
+                            <TransformGroup>
+                                <ScaleTransform ScaleX="{Binding EtalonPhotoScale}"
+                                                ScaleY="{Binding EtalonPhotoScale}" />
+                                <RotateTransform Angle="{Binding EtalonPhotoAngle}" />
+                            </TransformGroup>
+                        </Image.RenderTransform>
+                    </Image>
                     <controls:AnnotationCanvas Items="{Binding AnnotationItems}"
                                                Tool="{Binding AnnotationTool}"
                                                Color="#FFFF3030"
                                                Visibility="{Binding ShowAnnotations, Converter={StaticResource BoolToVis}}" />
-                    <Image Source="{Binding HeatmapImage}" Stretch="Uniform"
-                           Opacity="0.55"
-                           Visibility="{Binding ShowHeatmap, Converter={StaticResource BoolToVis}}" />
-                    <Image Source="{Binding DiffImage}" Stretch="Uniform"
-                           Opacity="0.75"
-                           Visibility="{Binding ShowDiff, Converter={StaticResource BoolToVis}}" />
                 </Grid>
+
+                <TextBlock Text="{Binding CardEtalonPhotoHint, Source={StaticResource Strings}}"
+                           Margin="0,6,0,0" FontSize="11" Foreground="#FF888888"
+                           Visibility="{Binding HasEtalon, Converter={StaticResource BoolToVis}}" />
 
                 <TextBlock Text="{Binding AnomalyStatus}" Margin="0,8,0,0" TextWrapping="Wrap" />
                 <Button Style="{StaticResource Btn}" Margin="0,8,0,0"
@@ -61,35 +148,10 @@
                         Content="{Binding CardRegenVector, Source={StaticResource Strings}}"
                         Command="{Binding RegenerateVectorCommand}"
                         IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}" />
-
-                <!-- 2-D vector projection -->
-                <TextBlock Text="{Binding CompareVector, Source={StaticResource Strings}}"
-                           FontWeight="SemiBold" Margin="0,12,0,2"
-                           ToolTip="{Binding CompareVectorHint, Source={StaticResource Strings}}"
-                           Visibility="{Binding HasVectorPoints, Converter={StaticResource BoolToVis}}" />
-                <Border Background="#FF191A1E" CornerRadius="4" Padding="2"
-                        Visibility="{Binding HasVectorPoints, Converter={StaticResource BoolToVis}}">
-                    <Canvas Width="260" Height="160" HorizontalAlignment="Left">
-                        <ItemsControl ItemsSource="{Binding VectorPoints}">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <Canvas />
-                                </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Grid Canvas.Left="{Binding Left}" Canvas.Top="{Binding Top}"
-                                          Background="Transparent">
-                                        <Ellipse Width="10" Height="10" Fill="{Binding Fill}" />
-                                        <TextBlock Text="{Binding Label}" FontSize="11"
-                                                   Foreground="#FFF0F0F0"
-                                                   Margin="12,0,0,0" VerticalAlignment="Center" />
-                                    </Grid>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </Canvas>
-                </Border>
+                <Button Style="{StaticResource Btn}"
+                        Content="{Binding CardReset, Source={StaticResource Strings}}"
+                        Command="{Binding ResetEtalonPhotoCommand}"
+                        IsEnabled="{Binding HasEtalon}" />
             </StackPanel>
         </Border>
 

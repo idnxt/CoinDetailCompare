@@ -9,7 +9,8 @@ namespace CoinDetailCompare.App;
 /// <summary>
 /// 16:9 capture window: live viewfinder with a green coin template on the left,
 /// obverse/reverse previews and shoot/close buttons on the right.
-/// Hotkeys: 1 — shoot obverse, 2 — shoot reverse, Esc — close.
+/// Hotkeys: 1 — shoot obverse, 2 — shoot reverse, ~ — save and next coin,
+/// Esc — close.
 /// </summary>
 public partial class CaptureWindow : Window
 {
@@ -28,8 +29,17 @@ public partial class CaptureWindow : Window
             Interval = TimeSpan.FromMilliseconds(40)
         };
         _timer.Tick += (_, _) => PumpFrame();
-        Loaded += (_, _) => { if (_vm.IsCameraOpen) _timer.Start(); };
+        Loaded += (_, _) =>
+        {
+            if (_vm.IsCameraOpen) _timer.Start();
+            UpdateExpandButton();
+        };
         Closed += (_, _) => _timer.Stop();
+        // Refresh the expand/restore caption when the UI language changes.
+        _vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == "T") UpdateExpandButton();
+        };
     }
 
     private void PumpFrame()
@@ -60,7 +70,24 @@ public partial class CaptureWindow : Window
 
     private void OnShootReverse(object sender, RoutedEventArgs e) => Shoot(_vm.ShootReverseCommand);
 
+    private void OnSaveNext(object sender, RoutedEventArgs e) => Shoot(_vm.SaveNextCommand);
+
     private void OnClose(object sender, RoutedEventArgs e) => Close();
+
+    private void OnToggleMaximize(object sender, RoutedEventArgs e)
+    {
+        WindowState = WindowState == WindowState.Maximized
+            ? WindowState.Normal
+            : WindowState.Maximized;
+        UpdateExpandButton();
+    }
+
+    private void UpdateExpandButton()
+    {
+        ExpandButton.Content = WindowState == WindowState.Maximized
+            ? _vm.T("capture.collapse")
+            : _vm.T("capture.expand");
+    }
 
     private static void Shoot(System.Windows.Input.ICommand command)
     {
@@ -80,6 +107,9 @@ public partial class CaptureWindow : Window
             case Key.D2:
             case Key.NumPad2:
                 Shoot(_vm.ShootReverseCommand);
+                break;
+            case Key.OemTilde:
+                Shoot(_vm.SaveNextCommand);
                 break;
             case Key.Escape:
                 Close();

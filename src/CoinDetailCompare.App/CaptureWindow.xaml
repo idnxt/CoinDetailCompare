@@ -3,11 +3,41 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="{Binding CaptureWindowTitle, Source={StaticResource Strings}}"
         Width="1040" Height="585"
-        ResizeMode="NoResize"
+        ResizeMode="CanResizeWithGrip"
         WindowStartupLocation="CenterOwner"
         Background="#FF1E1F22">
-    <!-- 16:9 window. Left block is 9:9 (square viewfinder), right block is 7:9. -->
-    <Grid Margin="8">
+    <DockPanel>
+        <!-- Header row: album / page / coin number + expand button -->
+        <Border DockPanel.Dock="Top" Background="#FF2B2E33" CornerRadius="4"
+                Padding="10,6" Margin="8,0,8,4">
+            <DockPanel>
+                <Button DockPanel.Dock="Right" x:Name="ExpandButton" Click="OnToggleMaximize"
+                        Padding="14,4" FontSize="13" />
+                <TextBlock DockPanel.Dock="Right" VerticalAlignment="Center" Margin="0,0,14,0"
+                           Foreground="#FFB0B0B0"
+                           Text="{Binding CaptureHotkeysHint, Source={StaticResource Strings}}" />
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <StackPanel Margin="0,0,20,0">
+                        <TextBlock Text="{Binding CaptureAlbum, Source={StaticResource Strings}}"
+                                   Foreground="#FFB0B0B0" />
+                        <TextBox Text="{Binding Album, UpdateSourceTrigger=PropertyChanged}" Width="160" />
+                    </StackPanel>
+                    <StackPanel Margin="0,0,20,0">
+                        <TextBlock Text="{Binding CapturePage, Source={StaticResource Strings}}"
+                                   Foreground="#FFB0B0B0" />
+                        <TextBox Text="{Binding PageNo}" Width="60" />
+                    </StackPanel>
+                    <StackPanel>
+                        <TextBlock Text="{Binding CaptureOrder, Source={StaticResource Strings}}"
+                                   Foreground="#FFB0B0B0" />
+                        <TextBox Text="{Binding OrderNo}" Width="60" />
+                    </StackPanel>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- 16:9 body. Left block is 9:9 (square viewfinder), right block is 7:9. -->
+        <Grid Margin="8">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="9*" />
             <ColumnDefinition Width="7*" />
@@ -65,9 +95,11 @@
                 </Border>
             </Grid>
 
-            <!-- Three buttons: shoot obverse (1), shoot reverse (2), close (Esc) -->
+            <!-- Four buttons: shoot obverse (1), shoot reverse (2),
+                 save + next coin (~), close (Esc) -->
             <Grid Grid.Row="1">
                 <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="*" />
@@ -79,10 +111,14 @@
                 <Button Grid.Column="1" Click="OnShootReverse"
                         Content="{Binding CaptureShootReverseKey, Source={StaticResource Strings}}"
                         FontSize="15" Padding="6,10" Margin="4,0,4,0" />
-                <Button Grid.Column="2" Click="OnClose"
+                <Button Grid.Column="2" Click="OnSaveNext"
+                        Content="{Binding CaptureNext, Source={StaticResource Strings}}"
+                        FontSize="15" Padding="6,10" Margin="4,0,4,0" />
+                <Button Grid.Column="3" Click="OnClose"
                         Content="{Binding CaptureClose, Source={StaticResource Strings}}"
                         FontSize="15" Padding="6,10" Margin="4,0,0,0" />
             </Grid>
         </Grid>
-    </Grid>
+        </Grid>
+    </DockPanel>
 </Window>

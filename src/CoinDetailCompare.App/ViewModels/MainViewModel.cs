@@ -28,7 +28,6 @@ public class MainViewModel : ObservableObject
     private string _album = "";
     private int _pageNo;
     private int _orderNo;
-    private double _rotation;
     private bool _isBusy;
     private bool _useGpu;
     private int _patchGrid = 16;
@@ -77,15 +76,11 @@ public class MainViewModel : ObservableObject
     private string _quality = "";
     private string _anomalyDesc = "";
 
-    // ---- batch capture state ----
-    private string _batchAlbum = "";
-    private int _batchPage;
-    private int _batchCount;
-    private string _batchStatus = "";
-    private BatchPhase _batchPhase = BatchPhase.Idle;
-    private int _batchIndex;
-    private readonly List<string> _batchObverse = new();
-    private readonly List<string> _batchReverse = new();
+    // ---- backend control (status bar) ----
+    private bool _backendUp;
+    private string _backendToggleText = "";
+    private string _backendStateText = "";
+    private System.Windows.Media.Brush _backendIndicatorBrush = System.Windows.Media.Brushes.Red;
 
     public MainViewModel(AppSettings settings, BackendClient backend, DbService db,
         ICameraDevice camera, LocalizationService loc, Strings strings)
@@ -110,20 +105,20 @@ public class MainViewModel : ObservableObject
         SearchCommand = new RelayCommand(async () => await SearchAsync());
         SwapEtalonCommand = new RelayCommand<EtalonCandidate>(SwapEtalon);
         SetupGpuCommand = new RelayCommand(async () => await SetupGpuAsync());
+        ToggleBackendCommand = new RelayCommand(async () => await ToggleBackendAsync());
+        // Keep the status-bar indicator current for the lifetime of the app.
+        _ = PollBackendAsync();
         SaveMatchCommand = new RelayCommand(async () => await SaveAsync(SourceKind.Match));
         SaveDuplicateCommand = new RelayCommand(async () => await SaveAsync(SourceKind.Duplicate));
         SaveVariantCommand = new RelayCommand(async () => await SaveAsync(SourceKind.Variant));
         SaveAnomalyCommand = new RelayCommand(async () => await SaveAsync(SourceKind.Anomaly));
+        SaveNextCommand = new RelayCommand(async () => await SaveNextAsync());
         RebuildIndexCommand = new RelayCommand(async () => await RebuildIndexAsync());
         NumistaSearchCommand = new RelayCommand(async () => await NumistaSearchAsync());
         LoadObverseFileCommand = new RelayCommand(LoadObverseFile);
         LoadReverseFileCommand = new RelayCommand(LoadReverseFile);
 
         OpenCameraCommand = new RelayCommand(OpenCamera);
-        StartBatchCommand = new RelayCommand(async () => await StartBatchAsync());
-        CaptureNextCommand = new RelayCommand(async () => await CaptureNextAsync());
-        CancelBatchCommand = new RelayCommand(CancelBatch);
-        SaveBatchCommand = new RelayCommand(async () => await SaveBatchAsync());
         SaveAttributesCommand = new RelayCommand(async () => await SaveAttributesAsync());
         LoadTypeCommand = new RelayCommand(async () => await LoadTypeAsync());
         SaveTypeCommand = new RelayCommand(async () => await SaveTypeAsync());
@@ -143,7 +138,6 @@ public class MainViewModel : ObservableObject
     public string Album { get => _album; set => SetProperty(ref _album, value); }
     public int PageNo { get => _pageNo; set => SetProperty(ref _pageNo, value); }
     public int OrderNo { get => _orderNo; set => SetProperty(ref _orderNo, value); }
-    public double Rotation { get => _rotation; set => SetProperty(ref _rotation, value); }
     public bool IsBusy { get => _isBusy; set => SetProperty(ref _isBusy, value); }
 
     // ---- comparison / anomaly options ----
@@ -298,15 +292,22 @@ public class MainViewModel : ObservableObject
         SetProperty(ref _annotationToolName, _annotationToolName);
     }
 
-    // ---- batch properties ----
-    public string BatchAlbum { get => _batchAlbum; set => SetProperty(ref _batchAlbum, value); }
-    public int BatchPage { get => _batchPage; set => SetProperty(ref _batchPage, value); }
-    public int BatchCount { get => _batchCount; set => SetProperty(ref _batchCount, value); }
-    public string BatchStatus { get => _batchStatus; set => SetProperty(ref _batchStatus, value); }
-    public BatchPhase BatchPhase { get => _batchPhase; set => SetProperty(ref _batchPhase, value); }
-    public int BatchIndex => _batchIndex;
-    public bool BatchActive => _batchPhase is BatchPhase.Obverse or BatchPhase.Reverse;
-    public List<BatchResult> BatchResults { get; } = new();
+    // ---- backend control (status bar) ----
+    /// <summary>True when the backend answered /health on the last poll.</summary>
+    public bool BackendUp { get => _backendUp; set => SetProperty(ref _backendUp, value); }
+    public string BackendToggleText { get => _backendToggleText; set => SetProperty(ref _backendToggleText, value); }
+    public string BackendStateText { get => _backendStateText; set => SetProperty(ref _backendStateText, value); }
+    /// <summary>Green/red status dot for the status bar (frozen, UI-thread safe).</summary>
+    public System.Windows.Media.Brush BackendIndicatorBrush
+    {
+        get => _backendIndicatorBrush;
+        set
+        {
+            var b = value;
+            b.Freeze();
+            SetProperty(ref _backendIndicatorBrush, b);
+        }
+    }
 
     // ---- commands ----
     public RelayCommand ShootObverseCommand { get; }
@@ -316,19 +317,17 @@ public class MainViewModel : ObservableObject
     public RelayCommand SearchCommand { get; }
     public RelayCommand<EtalonCandidate> SwapEtalonCommand { get; }
     public RelayCommand SetupGpuCommand { get; }
+    public RelayCommand ToggleBackendCommand { get; }
     public RelayCommand SaveMatchCommand { get; }
     public RelayCommand SaveDuplicateCommand { get; }
     public RelayCommand SaveVariantCommand { get; }
     public RelayCommand SaveAnomalyCommand { get; }
+    public RelayCommand SaveNextCommand { get; }
     public RelayCommand RebuildIndexCommand { get; }
     public RelayCommand NumistaSearchCommand { get; }
     public RelayCommand LoadObverseFileCommand { get; }
     public RelayCommand LoadReverseFileCommand { get; }
     public RelayCommand OpenCameraCommand { get; }
-    public RelayCommand StartBatchCommand { get; }
-    public RelayCommand CaptureNextCommand { get; }
-    public RelayCommand CancelBatchCommand { get; }
-    public RelayCommand SaveBatchCommand { get; }
     public RelayCommand SaveAttributesCommand { get; }
     public RelayCommand LoadTypeCommand { get; }
     public RelayCommand SaveTypeCommand { get; }
@@ -443,7 +442,7 @@ public class MainViewModel : ObservableObject
             raw_path: rawPath,
             side: side == CoinSide.Obverse ? "obverse" : "reverse",
             target_size: _settings.TargetSize,
-            orientation_deg: Rotation,
+            orientation_deg: 0,
             etalon_path: etalonPath);
         return await _backend.PreprocessAsync(req);
     }
@@ -489,201 +488,6 @@ public class MainViewModel : ObservableObject
             Filter = "Images|*.png;*.jpg;*.jpeg;*.bmp"
         };
         return dlg.ShowDialog() == true ? dlg.FileName : null;
-    }
-
-    // ==================== batch capture ====================
-    /// <summary>
-    /// Batch mode: album/page are given BEFORE the run. All obverses are
-    /// captured first, then all reverses in the same order. Coins are
-    /// numbered 1..N by photo order.
-    /// </summary>
-    private async Task StartBatchAsync()
-    {
-        if (BatchCount < 1)
-        {
-            BatchStatus = T("status.error");
-            return;
-        }
-        if (!_camera.IsOpen)
-            OpenCamera();
-        if (!_camera.IsOpen)
-        {
-            BatchStatus = T("capture.camera_offline");
-            return;
-        }
-
-        _batchObverse.Clear();
-        _batchReverse.Clear();
-        BatchResults.Clear();
-        _batchIndex = 0;
-        BatchPhase = BatchPhase.Obverse;
-        BatchStatus = $"phase: obverse, 0/{BatchCount}";
-        await CaptureNextAsync();
-    }
-
-    private async Task CaptureNextAsync()
-    {
-        if (!BatchActive)
-            return;
-        IsBusy = true;
-        try
-        {
-            CoinSide side = BatchPhase == BatchPhase.Obverse ? CoinSide.Obverse : CoinSide.Reverse;
-            if (!_camera.TryGetFrame(out var frame) || frame == null)
-            {
-                BatchStatus = T("capture.camera_offline");
-                return;
-            }
-
-            var raw = SaveFrame(frame, side);
-            var resp = await PreprocessAsync(raw, side);
-            if (resp is not { ok: true } || string.IsNullOrEmpty(resp.crop_path))
-            {
-                // Retake: do not advance the order number.
-                BatchStatus = $"retry: {resp?.error ?? T("status.error")}";
-                return;
-            }
-
-            _batchIndex++;
-            int orderNo = _batchIndex;
-            if (BatchPhase == BatchPhase.Obverse)
-                _batchObverse.Add(resp.crop_path);
-            else
-                _batchReverse.Add(resp.crop_path);
-
-            if (BatchPhase == BatchPhase.Obverse)
-            {
-                ObverseImage = LoadImage(resp.crop_path);
-                if (_batchIndex >= BatchCount)
-                {
-                    BatchPhase = BatchPhase.Reverse;
-                    _batchIndex = 0;
-                    BatchStatus = "phase: reverse, 0/" + BatchCount;
-                    await CaptureNextAsync();
-                    return;
-                }
-                BatchStatus = $"phase: obverse, {_batchIndex}/{BatchCount}";
-            }
-            else
-            {
-                ReverseImage = LoadImage(resp.crop_path);
-                if (_batchIndex >= BatchCount)
-                {
-                    BatchPhase = BatchPhase.Done;
-                    BatchStatus = "capturing done - matching...";
-                    await MatchBatchAsync();
-                    return;
-                }
-                BatchStatus = $"phase: reverse, {_batchIndex}/{BatchCount}";
-            }
-            _ = orderNo; // order number == capture order, stored with results
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
-
-    private void CancelBatch()
-    {
-        _batchObverse.Clear();
-        _batchReverse.Clear();
-        BatchResults.Clear();
-        _batchIndex = 0;
-        BatchPhase = BatchPhase.Idle;
-        BatchStatus = "";
-    }
-
-    /// <summary>After both phases: pair obverse[i]+reverse[i] and run search for each pair.</summary>
-    private async Task MatchBatchAsync()
-    {
-        for (int i = 0; i < BatchResults.Count || i < BatchCount; i++)
-        {
-            if (i >= _batchObverse.Count || i >= _batchReverse.Count)
-                break;
-            var result = new BatchResult
-            {
-                OrderNo = i + 1,
-                ObversePath = _batchObverse[i],
-                ReversePath = _batchReverse[i],
-            };
-            BatchResults.Add(result);
-
-            try
-            {
-                var req = new SearchRequest(
-                    crop_path: _batchObverse[i],
-                    side: "obverse",
-                    obverse_path: _batchObverse[i],
-                    reverse_path: _batchReverse[i],
-                    candidate_type_id: null,
-                    etalon_quality: null,
-                    topk: 10);
-                var resp = await _backend.SearchAsync(req);
-                if (resp is { candidates: { Count: > 0 } })
-                {
-                    var top = resp.candidates[0];
-                    result.TopCoinId = top.coin_id;
-                    result.ObversePct = Math.Round(top.obverse_pct, 1);
-                    result.ReversePct = Math.Round(top.reverse_pct, 1);
-                    result.Orientation = top.orientation;
-                    result.Status = $"{top.overall_pct:F1}%";
-                }
-                else
-                {
-                    result.Status = T("actions.not_determined");
-                }
-            }
-            catch
-            {
-                result.Status = T("status.error");
-            }
-        }
-        BatchStatus = $"matched {BatchResults.Count} coins";
-    }
-
-    /// <summary>Save every batch coin: embed + persist crops, then write DB rows.</summary>
-    private async Task SaveBatchAsync()
-    {
-        int saved = 0;
-        for (int i = 0; i < BatchResults.Count; i++)
-        {
-            try
-            {
-                var r = BatchResults[i];
-                var id = _db.NextCoinId();
-                string? ovPhoto = r.ObversePath, revPhoto = r.ReversePath, ovVec = null, revVec = null;
-                var embed = await _backend.EmbedAsync(new EmbedRequest(id, r.ObversePath, r.ReversePath));
-                if (embed is { ok: true })
-                {
-                    foreach (var s in embed.sides)
-                    {
-                        if (s.side == "obverse") { ovPhoto = s.photo_path; ovVec = s.vector_path; }
-                        else { revPhoto = s.photo_path; revVec = s.vector_path; }
-                    }
-                }
-                var coin = new Coin
-                {
-                    Id = id,
-                    AlbumName = string.IsNullOrEmpty(BatchAlbum) ? Album : BatchAlbum,
-                    PageNo = BatchPage,
-                    OrderNo = r.OrderNo,
-                    ObversePhoto = ovPhoto,
-                    ReversePhoto = revPhoto,
-                    ObverseVector = ovVec,
-                    ReverseVector = revVec,
-                    SourceKind = r.TopCoinId != null ? SourceKind.Match : SourceKind.Manual,
-                    EtalonId = r.TopCoinId,
-                };
-                _db.SaveCoin(coin);
-                saved++;
-            }
-            catch (System.Exception)
-            {
-                // skip this batch coin, keep saving the rest
-            }
-        }
-        BatchStatus = $"{saved} saved";
     }
 
     // ==================== search ====================
@@ -973,6 +777,83 @@ public class MainViewModel : ObservableObject
         return p is null ? Task.CompletedTask : p.WaitForExitAsync();
     }
 
+    /// <summary>Stops the backend by killing whatever listens on its port.</summary>
+    private Task StopBackendAsync()
+    {
+        var root = Path.GetFullPath(Path.Combine(_settings.CoimgDir, ".."));
+        var ps = Path.Combine(root, "scripts", "stop_backend.ps1");
+        var psi = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = "powershell",
+            Arguments = $"-NoProfile -ExecutionPolicy Bypass -File \"{ps}\" {_settings.BackendPort}",
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        var p = System.Diagnostics.Process.Start(psi);
+        return p is null ? Task.CompletedTask : p.WaitForExitAsync();
+    }
+
+    /// <summary>Starts or stops the backend, depending on its current state.</summary>
+    private async Task ToggleBackendAsync()
+    {
+        if (IsBusy) return;
+        IsBusy = true;
+        try
+        {
+            if (BackendUp)
+            {
+                Status = T("backend.stopping");
+                await StopBackendAsync();
+            }
+            else
+            {
+                Status = T("backend.starting");
+                // The restart script kills whatever is on the port first,
+                // so it doubles as a plain start when nothing is running.
+                await RestartBackendAsync();
+            }
+            // The polling loop refreshes the indicator within a few seconds
+            // (backend startup with CUDA can take a while — no blocking wait).
+        }
+        catch (System.Exception ex)
+        {
+            Status = $"{T("status.error")}: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Polls /health every 3 s and updates the status-bar indicator.
+    /// Runs for the lifetime of the app.
+    /// </summary>
+    private async Task PollBackendAsync()
+    {
+        while (true)
+        {
+            HealthDto? h = null;
+            try { h = await _backend.HealthAsync(); } catch { h = null; }
+            if (h is not null)
+            {
+                BackendUp = true;
+                BackendStateText = string.Format(T("backend.up"), h.device);
+                BackendToggleText = T("backend.stop");
+                BackendIndicatorBrush = System.Windows.Media.Brushes.LimeGreen;
+            }
+            else
+            {
+                BackendUp = false;
+                BackendStateText = T("backend.down");
+                BackendToggleText = T("backend.start");
+                BackendIndicatorBrush = System.Windows.Media.Brushes.Red;
+            }
+            try { await Task.Delay(TimeSpan.FromSeconds(3)); }
+            catch (System.Threading.Tasks.TaskCanceledException) { break; }
+        }
+    }
+
     /// <summary>
     /// Finds a python to run setup_gpu.py, in priority order:
     /// env\python (installed by a previous run of the setup itself) →
@@ -1067,12 +948,18 @@ public class MainViewModel : ObservableObject
     }
 
     // ==================== save ====================
-    private async Task SaveAsync(SourceKind kind)
+    /// <summary>
+    /// Saves the current obverse/reverse pair as a new coin.
+    /// etalonId overrides the default (current coin) when a specific
+    /// etalon link — or no link at all (null) — is wanted.
+    /// Returns true when the coin was saved.
+    /// </summary>
+    private async Task<bool> SaveAsync(SourceKind kind, int? etalonId = null, bool clearPreviews = false)
     {
         if (string.IsNullOrEmpty(_obversePath) && string.IsNullOrEmpty(_reversePath))
         {
             Status = T("status.error");
-            return;
+            return false;
         }
         int id;
         try
@@ -1082,7 +969,7 @@ public class MainViewModel : ObservableObject
         catch (System.Exception ex)
         {
             Status = $"{T("status.error")}: {ex.Message}";
-            return;
+            return false;
         }
         string? ovPhoto = _obversePath, revPhoto = _reversePath, ovVec = null, revVec = null;
         try
@@ -1099,7 +986,7 @@ public class MainViewModel : ObservableObject
             else
             {
                 Status = embed?.error ?? T("status.error");
-                return;
+                return false;
             }
             var coin = new Coin
             {
@@ -1116,15 +1003,44 @@ public class MainViewModel : ObservableObject
                 ReverseVector = revVec,
                 SourceKind = kind,
                 IsAnomaly = kind == SourceKind.Anomaly,
-                EtalonId = _currentCoinId,
+                EtalonId = etalonId ?? _currentCoinId,
             };
             _db.SaveCoin(coin);
             _currentCoinId = id;
             Status = T("status.saved");
+            if (clearPreviews)
+            {
+                _obversePath = null;
+                _reversePath = null;
+                ObverseImage = null;
+                ReverseImage = null;
+                CompareImage = null;
+            }
+            return true;
         }
         catch (System.Exception ex)
         {
             Status = $"{T("status.error")}: {ex.Message}";
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Capture-mode "next coin": save the current obverse+reverse as a new
+    /// standalone coin (no etalon link), then advance the coin number and
+    /// clear the previews so the next coin can be shot.
+    /// </summary>
+    private async Task SaveNextAsync()
+    {
+        IsBusy = true;
+        try
+        {
+            if (await SaveAsync(SourceKind.Manual, etalonId: null, clearPreviews: true))
+                OrderNo += 1;
+        }
+        finally
+        {
+            IsBusy = false;
         }
     }
 

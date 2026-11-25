@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using CoinDetailCompare.App.Models;
@@ -11,10 +12,12 @@ namespace CoinDetailCompare.App.ViewModels;
 
 /// <summary>
 /// Card of a saved coin: the same layers as during photo — base photo,
-/// anomaly heatmap, rotation-normalized coin, diff against the etalon,
-/// 2-D vector projection and the annotation layer. Attributes (name,
-/// album/page/number, year, mint, grade, anomaly description) are editable
-/// and saved back to the catalog database.
+/// anomaly heatmap, the etalon/current diff layer (direct |a-b| draft,
+/// tinted with a per-layer color + opacity), a manually rotatable/zoomable
+/// etalon photo and the annotation layer.
+/// Attributes (name, album/page/number, year, mint, grade, anomaly
+/// description) are editable and saved back to the catalog database.
+/// Layer visibility/color/opacity are persisted and applied to every card.
 /// </summary>
 public class CoinCardViewModel : ObservableObject
 {
@@ -71,6 +74,8 @@ public class CoinCardViewModel : ObservableObject
         private set => SetProperty(ref _heatmapImage, value);
     }
 
+    /// <summary>Tinted diff layer: where this coin differs from the etalon
+    /// (direct |a-b| of the raw crops, in the base photo frame).</summary>
     private ImageSource? _diffImage;
     public ImageSource? DiffImage
     {
@@ -78,22 +83,12 @@ public class CoinCardViewModel : ObservableObject
         private set => SetProperty(ref _diffImage, value);
     }
 
-    private List<VectorPointItem> _vectorPoints = new();
-    public List<VectorPointItem> VectorPoints
+    /// <summary>Etalon photo for the manual overlay (rotate/zoom around center).</summary>
+    private ImageSource? _etalonPhotoImage;
+    public ImageSource? EtalonPhotoImage
     {
-        get => _vectorPoints;
-        private set
-        {
-            SetProperty(ref _vectorPoints, value);
-            HasVectorPoints = value.Count > 0;
-        }
-    }
-
-    private bool _hasVectorPoints;
-    public bool HasVectorPoints
-    {
-        get => _hasVectorPoints;
-        private set => SetProperty(ref _hasVectorPoints, value);
+        get => _etalonPhotoImage;
+        private set => SetProperty(ref _etalonPhotoImage, value);
     }
 
     private bool _showHeatmap = true;
@@ -103,11 +98,104 @@ public class CoinCardViewModel : ObservableObject
         set => SetProperty(ref _showHeatmap, value);
     }
 
-    private bool _showDiff = true;
-    public bool ShowDiff
+    /// <summary>Visibility of the etalon/current diff layer.</summary>
+    private bool _showDiffLayer;
+    public bool ShowDiffLayer
     {
-        get => _showDiff;
-        set => SetProperty(ref _showDiff, value);
+        get => _showDiffLayer;
+        set
+        {
+            if (SetProperty(ref _showDiffLayer, value))
+                PersistLayerSettings();
+        }
+    }
+
+    private bool _showEtalonPhoto;
+    public bool ShowEtalonPhoto
+    {
+        get => _showEtalonPhoto;
+        set
+        {
+            if (SetProperty(ref _showEtalonPhoto, value))
+                PersistLayerSettings();
+        }
+    }
+
+    /// <summary>Overlay color of the diff layer (the draft is tinted with it).</summary>
+    private Color _diffColor;
+    public Color DiffColor
+    {
+        get => _diffColor;
+        set
+        {
+            if (SetProperty(ref _diffColor, value))
+            {
+                ApplyDiffLayer();
+                PersistLayerSettings();
+            }
+        }
+    }
+
+    /// <summary>Opacity percent (0-100) of the diff layer.</summary>
+    private double _diffOpacity;
+    public double DiffOpacity
+    {
+        get => _diffOpacity;
+        set
+        {
+            if (SetProperty(ref _diffOpacity, Math.Clamp(value, 0, 100)))
+                PersistLayerSettings();
+        }
+    }
+
+    /// <summary>Opacity percent (0-100) of the etalon photo overlay.</summary>
+    private double _etalonPhotoOpacity;
+    public double EtalonPhotoOpacity
+    {
+        get => _etalonPhotoOpacity;
+        set
+        {
+            if (SetProperty(ref _etalonPhotoOpacity, Math.Clamp(value, 0, 100)))
+                PersistLayerSettings();
+        }
+    }
+
+    // Manual etalon-photo transform: rotation degrees and scale factor.
+    // Session-only (not persisted) — each card starts from the identity.
+    private double _etalonPhotoAngle;
+    public double EtalonPhotoAngle
+    {
+        get => _etalonPhotoAngle;
+        set => SetProperty(ref _etalonPhotoAngle, value);
+    }
+
+    private double _etalonPhotoScale = 1.0;
+    public double EtalonPhotoScale
+    {
+        get => _etalonPhotoScale;
+        set => SetProperty(ref _etalonPhotoScale, value);
+    }
+
+    /// <summary>Zoom as a percent (base 100 = original size, range 80–120), 0.01 precision.</summary>
+    public double EtalonPhotoScalePct
+    {
+        get => _etalonPhotoScale * 100;
+        set
+        {
+            double pct = double.IsFinite(value) ? Math.Clamp(value, 80, 120) : 100;
+            // Explicit name: SetProperty called from this setter would otherwise
+            // announce "EtalonPhotoScalePct", which the ScaleX binding does not watch.
+            if (SetProperty(ref _etalonPhotoScale, pct / 100.0, nameof(EtalonPhotoScale)))
+                OnPropertyChanged(nameof(EtalonPhotoScalePct));
+        }
+    }
+
+    /// <summary>True when the coin has an etalon above it.</summary>
+    private bool _hasEtalon;
+    public bool HasEtalon
+    {
+        get => _hasEtalon;
+        private set => SetProperty(ref _hasEtalon, value);
     }
 
     private bool _showAnnotations = true;
@@ -116,6 +204,9 @@ public class CoinCardViewModel : ObservableObject
         get => _showAnnotations;
         set => SetProperty(ref _showAnnotations, value);
     }
+
+    // Raw diff-layer PNG (re-tinted on color change).
+    private byte[]? _diffGray;
 
     // ---- anomaly result ----
     private double _anomalyScore;
@@ -271,6 +362,13 @@ public class CoinCardViewModel : ObservableObject
         _db = db;
         _loc = loc;
 
+        // Restore the persisted card-layer settings (same for every card).
+        _showDiffLayer = settings.LayerDiff.Enabled;
+        _diffColor = ParseColor(settings.LayerDiff.Color, Color.FromRgb(0xFF, 0x30, 0x30));
+        _diffOpacity = ClampPct(settings.LayerDiff.Opacity);
+        _showEtalonPhoto = settings.LayerEtalonPhoto.Enabled;
+        _etalonPhotoOpacity = ClampPct(settings.LayerEtalonPhoto.Opacity);
+
         AnnotationToolItems.Add(_loc.T("annotation.tool_line"));
         AnnotationToolItems.Add(_loc.T("annotation.tool_ellipse"));
         AnnotationToolItems.Add(_loc.T("annotation.tool_arrow"));
@@ -280,6 +378,11 @@ public class CoinCardViewModel : ObservableObject
         RunAnomalyCommand = new RelayCommand(async () => await RunAnomalyAsync());
         RunCompareCommand = new RelayCommand(async () => await RunCompareAsync());
         RegenerateVectorCommand = new RelayCommand(async () => await RegenerateVectorAsync());
+        ResetEtalonPhotoCommand = new RelayCommand(() =>
+        {
+            EtalonPhotoAngle = 0;
+            EtalonPhotoScale = 1.0;
+        });
         SaveCommand = new RelayCommand(Save);
         UndoAnnotationCommand = new RelayCommand(UndoAnnotation);
         ClearAnnotationsCommand = new RelayCommand(ClearAnnotations);
@@ -292,6 +395,7 @@ public class CoinCardViewModel : ObservableObject
     public RelayCommand RunAnomalyCommand { get; }
     public RelayCommand RunCompareCommand { get; }
     public RelayCommand RegenerateVectorCommand { get; }
+    public RelayCommand ResetEtalonPhotoCommand { get; }
     public RelayCommand SaveCommand { get; }
     public RelayCommand UndoAnnotationCommand { get; }
     public RelayCommand ClearAnnotationsCommand { get; }
@@ -327,14 +431,14 @@ public class CoinCardViewModel : ObservableObject
         IsAnomaly = c.IsAnomaly;
         IsDuplicate = c.SourceKind is SourceKind.Duplicate or SourceKind.Variant or SourceKind.Anomaly;
         IsBase = _etalonId is null;
+        HasEtalon = _etalonId is not null;
 
         RefreshImages();
 
-        // A base coin has no etalon to compare against (no diff/anomaly), but
-        // its own search vector is projected against the other coins.
-        if (IsBase)
-            _ = LoadVectorAsync();
-        else
+        // The diff layer shows where this coin differs from the etalon
+        // (when an etalon is set).
+        _ = LoadDiffImageAsync();
+        if (!IsBase)
             _ = RunCompareAsync();
         try
         {
@@ -365,18 +469,50 @@ public class CoinCardViewModel : ObservableObject
         var photo = PhotoPath(c);
         BaseImage = photo is not null ? LoadImage(photo) : null;
         string side = SideNameRaw();
-        // A base coin has no etalon -> its heatmap/diff layers are meaningless.
+        // A base coin has no etalon -> its heatmap layer is meaningless.
         HeatmapImage = IsBase ? null : LoadIfExists(Path.Combine(_settings.CoimgDir, $"{CoinId}_{side}_heatmap.png"));
-        DiffImage = LoadIfExists(Path.Combine(_settings.CoimgDir, $"{CoinId}_{side}_diff.png"));
-        VectorPoints = new List<VectorPointItem>();
+        // The etalon photo overlay uses the etalon's photo of the same side.
+        EtalonPhotoImage = HasEtalon && _etalonId is int eid
+            ? (PhotoPath(_db.GetCoin(eid)) is string ep ? LoadImage(ep) : null)
+            : null;
         AnomalyStatus = "";
         LoadAnnotationLayer();
-        if (IsBase)
-            _ = LoadVectorAsync();
+        _ = LoadDiffImageAsync();
     }
 
-    /// <summary>Compare the active side with the etalon: rotation-aligned diff
-    /// layer, normalized coin and the 2-D vector projection.</summary>
+    /// <summary>Fetch the etalon/current diff layer for the active side and
+    /// tint it with the layer color. A base coin has no etalon — no diff.</summary>
+    private async Task LoadDiffImageAsync()
+    {
+        if (!HasEtalon || _etalonId is not int eid)
+        {
+            _diffGray = null;
+            ApplyDiffLayer();
+            return;
+        }
+        try
+        {
+            _diffGray = await _backend.DiffImageAsync(CoinId, eid, SideNameRaw());
+        }
+        catch (System.Exception)
+        {
+            _diffGray = null; // backend offline
+        }
+        ApplyDiffLayer();
+        if (_diffGray is null)
+            Status = T("card.diff_unavailable");
+    }
+
+    /// <summary>Re-tint the cached diff-layer PNG and publish it.</summary>
+    private void ApplyDiffLayer()
+    {
+        DiffImage = _diffGray is not null
+            ? TintedGray(_diffGray, DiffColor)
+            : null;
+    }
+
+    /// <summary>Compare the active side with the etalon (rotation-aligned):
+    /// refreshes the status line with mean diff and rotation.</summary>
     private async Task RunCompareAsync()
     {
         var c = _db.GetCoin(CoinId);
@@ -396,20 +532,10 @@ public class CoinCardViewModel : ObservableObject
                 Status = $"{T("status.error")}: {resp?.error ?? "no response"}";
                 return;
             }
-            // The diff layer is warped back to the raw crop frame (see
-            // back_to_query), so keep the raw crop as the base image here —
-            // swapping to the normalized coin would shift the overlay.
-            DiffImage = resp.diff_path is not null && File.Exists(resp.diff_path)
-                ? LoadImage(resp.diff_path)
-                : null;
-            VectorPoints = resp.points.Select(p => new VectorPointItem
-            {
-                X = p.x,
-                Y = p.y,
-                Label = p.label,
-                IsQuery = p.is_query,
-            }).ToList();
             Status = string.Format(T("card.compare_done"), resp.mean_diff, resp.rotation_deg);
+            // the compare succeeded: refresh the diff layer (also retries
+            // after the backend came back)
+            _ = LoadDiffImageAsync();
         }
         catch (System.Exception ex)
         {
@@ -418,30 +544,6 @@ public class CoinCardViewModel : ObservableObject
         finally
         {
             IsBusy = false;
-        }
-    }
-
-    /// <summary>2-D projection of this coin's own search vector against the
-    /// other coins (for a base coin there is no etalon to compare with).</summary>
-    private async Task LoadVectorAsync()
-    {
-        try
-        {
-            var resp = await _backend.ProjectVectorAsync(new VectorProjectRequest(CoinId, SideNameRaw(), new List<int>()));
-            if (resp is { ok: true })
-            {
-                VectorPoints = resp.points.Select(p => new VectorPointItem
-                {
-                    X = p.x,
-                    Y = p.y,
-                    Label = p.label,
-                    IsQuery = p.is_query,
-                }).ToList();
-            }
-        }
-        catch (System.Exception ex)
-        {
-            Status = $"{T("status.error")}: {ex.Message}";
         }
     }
 
@@ -459,7 +561,6 @@ public class CoinCardViewModel : ObservableObject
                 return;
             }
             Status = string.Format(T("card.vector_recreated"), resp.dim);
-            _ = LoadVectorAsync();
         }
         catch (System.Exception ex)
         {
@@ -503,8 +604,10 @@ public class CoinCardViewModel : ObservableObject
                 : $"{T("anomaly.ok")} ({resp.score:F2})";
             if (resp.heatmap_path is not null && File.Exists(resp.heatmap_path))
                 HeatmapImage = LoadImage(resp.heatmap_path);
-            if (resp.normalized_path is not null && File.Exists(resp.normalized_path))
-                BaseImage = LoadImage(resp.normalized_path);
+            // The anomaly detector also returns a rotation-normalized image,
+            // but the card must keep the raw crop as its base layer: no
+            // auto-rotation/resizing of the photo (the etalon photo overlay
+            // is aligned manually by the user).
         }
         catch (System.Exception ex)
         {
@@ -590,7 +693,82 @@ public class CoinCardViewModel : ObservableObject
             AnnotationItems.Add(item);
     }
 
+    // ---- persisted layer settings ----
+    /// <summary>Write the current layer options back to the settings file so
+    /// every opened card starts with the same layer appearance.</summary>
+    private void PersistLayerSettings()
+    {
+        _settings.LayerDiff.Enabled = ShowDiffLayer;
+        _settings.LayerDiff.Color = ColorHex(DiffColor);
+        _settings.LayerDiff.Opacity = DiffOpacity;
+        _settings.LayerEtalonPhoto.Enabled = ShowEtalonPhoto;
+        _settings.LayerEtalonPhoto.Opacity = EtalonPhotoOpacity;
+        _settings.Persist?.Invoke();
+    }
+
     // ---- helpers ----
+    private static string ColorHex(Color c)
+        => $"#{c.R:X2}{c.G:X2}{c.B:X2}";
+
+    private static double ClampPct(double v) => Math.Clamp(v, 0, 100);
+
+    /// <summary>Parses #RRGGBB or #AARRGGBB (the persisted settings format).</summary>
+    private static Color ParseColor(string hex, Color fallback)
+    {
+        if (string.IsNullOrEmpty(hex) || hex[0] != '#')
+            return fallback;
+        hex = hex[1..];
+        try
+        {
+            int off = hex.Length >= 7 ? 2 : 0;
+            byte a = off == 2 ? byte.Parse(hex.Substring(0, 2), System.Globalization.NumberStyles.HexNumber) : (byte)255;
+            byte r = byte.Parse(hex.Substring(off, 2), System.Globalization.NumberStyles.HexNumber);
+            byte g = byte.Parse(hex.Substring(off + 2, 2), System.Globalization.NumberStyles.HexNumber);
+            byte b = byte.Parse(hex.Substring(off + 4, 2), System.Globalization.NumberStyles.HexNumber);
+            return Color.FromArgb(a, r, g, b);
+        }
+        catch
+        {
+            return fallback;
+        }
+    }
+
+    /// <summary>
+    /// Tints a grayscale preview: each pixel becomes color * (gray/255),
+    /// i.e. the chosen color modulated by the vector's brightness.
+    /// </summary>
+    private static ImageSource TintedGray(byte[] png, Color color)
+    {
+        var bmp = new BitmapImage();
+        bmp.BeginInit();
+        bmp.CacheOption = BitmapCacheOption.OnLoad;
+        bmp.StreamSource = new MemoryStream(png);
+        bmp.EndInit();
+        int w = bmp.PixelWidth, h = bmp.PixelHeight;
+
+        // Render into a guaranteed 32-bit format so the pixel layout is predictable.
+        var visual = new DrawingVisual();
+        using (var dc = visual.RenderOpen())
+            dc.DrawImage(bmp, new Rect(0, 0, w, h));
+        var rt = new RenderTargetBitmap(w, h, 96, 96, PixelFormats.Pbgra32);
+        rt.Render(visual);
+
+        byte[] buf = new byte[w * h * 4];
+        rt.CopyPixels(buf, w * 4, 0);
+        for (int i = 0; i < w * h; i++)
+        {
+            byte g = buf[i * 4]; // grayscale render: R == G == B
+            buf[i * 4]     = (byte)(color.R * g / 255);
+            buf[i * 4 + 1] = (byte)(color.G * g / 255);
+            buf[i * 4 + 2] = (byte)(color.B * g / 255);
+            // buf[i*4 + 3] = alpha, left as-is
+        }
+        var outBmp = new WriteableBitmap(w, h, 96, 96, PixelFormats.Pbgra32, null);
+        outBmp.WritePixels(new Int32Rect(0, 0, w, h), buf, w * 4, 0);
+        outBmp.Freeze();
+        return outBmp;
+    }
+
     private static ImageSource? LoadImage(string path)
     {
         if (!File.Exists(path)) return null;

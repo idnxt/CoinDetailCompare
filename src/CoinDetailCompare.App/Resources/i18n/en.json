@@ -13,7 +13,7 @@
     "swap_sides": "Swap obverse/reverse",
     "batch_mode": "Batch mode",
     "batch_coins": "Coin count",
-    "open_camera": "Open camera",
+    "open_camera": "Open capture window",
     "start_batch": "Start batch capture",
     "capture_frame": "Capture frame",
     "cancel_batch": "Cancel capture",
@@ -25,7 +25,10 @@
     "shoot_obverse_key": "Shoot obverse (1)",
     "shoot_reverse_key": "Shoot reverse (2)",
     "close": "Close",
-    "hotkeys_hint": "1 — obverse, 2 — reverse, Esc — close"
+    "next": "Next coin (~)",
+    "expand": "Expand",
+    "collapse": "Restore",
+    "hotkeys_hint": "1 — obverse, 2 — reverse, ~ — save and next, Esc — close"
   },
   "compare": {
     "section": "Comparison",
@@ -144,7 +147,23 @@
     "annotations": "Annotations",
     "run_compare": "Compare with etalon",
     "regenerate_vector": "Regenerate vector",
-    "vector_recreated": "Vector recreated (dim {0})"
+    "vector_recreated": "Vector recreated (dim {0})",
+    "layer_diff": "Diff layer (etalon/current)",
+    "layer_etalon_photo": "Etalon photo",
+    "opacity": "Opacity",
+    "reset": "Reset",
+    "etalon_photo_hint": "Etalon photo: drag — rotate around center, wheel — zoom (the diff layer moves with it)",
+    "diff_unavailable": "Diff layer unavailable (backend is offline)",
+    "angle": "Angle",
+    "scale": "Scale"
+  },
+  "backend": {
+    "start": "Start backend",
+    "stop": "Stop backend",
+    "starting": "Starting backend…",
+    "stopping": "Stopping backend…",
+    "up": "Backend running (device: {0})",
+    "down": "Backend not running"
   },
   "gpu": {
     "title": "GPU setup (torch cu128)",

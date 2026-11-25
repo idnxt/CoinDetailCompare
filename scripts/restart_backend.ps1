@@ -34,4 +34,10 @@ if ($p) {
     try { Stop-Process -Id $p -Force -ErrorAction Stop } catch {}
     Start-Sleep -Seconds 2
 }
-Start-Process -WindowStyle Hidden -FilePath $python -ArgumentList "run.py" -WorkingDirectory $backend
+# Log uvicorn's output so a crash is diagnosable (the window is hidden).
+$logDir = Join-Path $root "logs"
+New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+Start-Process -WindowStyle Hidden -FilePath $python -ArgumentList "run.py" `
+  -WorkingDirectory $backend `
+  -RedirectStandardOutput (Join-Path $logDir "backend.out.log") `
+  -RedirectStandardError (Join-Path $logDir "backend.err.log")

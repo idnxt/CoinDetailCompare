@@ -18,6 +18,11 @@ internal static class Program
             Console.WriteLine("UNHANDLED: " + e.Exception);
             Environment.Exit(2);
         };
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            e.SetObserved();
+            Console.WriteLine("UNOBSERVED: " + e.Exception);
+        };
 
         var baseDir = @"E:\CoinDetailCompare\src\CoinDetailCompare.App\bin\Release\net8.0-windows\win-x64";
         var settings = new SettingsService(baseDir).Current;
@@ -31,6 +36,7 @@ internal static class Program
         app.Resources["InverseBool"] = new CoinDetailCompare.App.Converters.InverseBoolConverter();
         app.Resources["Pct"] = new CoinDetailCompare.App.Converters.PercentConverter();
         app.Resources["BoolToVis"] = new CoinDetailCompare.App.Converters.BoolToVisibilityConverter();
+        app.Resources["Opacity01"] = new CoinDetailCompare.App.Converters.OpacityConverter();
 
         var card = new Style(typeof(System.Windows.Controls.Border));
         card.Setters.Add(new Setter(System.Windows.Controls.Border.BackgroundProperty, new SolidColorBrush(Color.FromRgb(0xF5, 0xF6, 0xF8))));
@@ -60,7 +66,91 @@ internal static class Program
         var main = new MainWindow { DataContext = vm };
         Console.WriteLine("MainWindow OK");
 
-        app.Shutdown();
+        var coinCard = new CoinDetailCompare.App.Views.CoinCardWindow(4, settings, backend, db, loc);
+        Console.WriteLine("CoinCardWindow OK");
+
+        // The VM kicks off fire-and-forget async work from its constructor:
+        // let the real dispatcher pump it, then shut down.
+        var timer = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(15)
+        };
+        timer.Tick += (s, e) =>
+        {
+            Console.WriteLine("Card settled.");
+            try
+            {
+                Console.WriteLine("step: show card");
+                coinCard.Show();
+                coinCard.UpdateLayout();
+                Console.WriteLine("step: scale/angle slider test");
+                var overlay = (System.Windows.Controls.Image)coinCard.FindName("EtalonPhotoOverlay");
+                var tg = (System.Windows.Media.TransformGroup)overlay.RenderTransform;
+                var st = (System.Windows.Media.ScaleTransform)tg.Children[0];
+                var rt = (System.Windows.Media.RotateTransform)tg.Children[1];
+                var scaleSlider = (System.Windows.Controls.Slider)coinCard.FindName("EtalonPhotoScaleSlider");
+                var angleSlider = (System.Windows.Controls.Slider)coinCard.FindName("EtalonPhotoAngleSlider");
+                double s0 = scaleSlider.Value, a0 = angleSlider.Value;
+                Console.WriteLine($"before: slider=({s0}, {a0}) transform=({st.ScaleX}, {rt.Angle})");
+                scaleSlider.Value = s0 + 10; // 100 -> 110 (range 80..120)
+                angleSlider.Value = a0 - 10; // 0 -> -10 (range -180..180)
+                coinCard.UpdateLayout();
+                var vm = coinCard.DataContext as CoinDetailCompare.App.ViewModels.CoinCardViewModel;
+                Console.WriteLine($"after sliders: slider=({scaleSlider.Value}, {angleSlider.Value}) vm=({vm.EtalonPhotoScale}, {vm.EtalonPhotoAngle}) transform=({st.ScaleX}, {rt.Angle})");
+                // NumericUpDown: type into the scale box, then move focus away (commit on LostFocus)
+                var scaleBox = (CoinDetailCompare.App.Controls.NumericUpDown)coinCard.FindName("ScaleBox");
+                var boxText = (System.Windows.Controls.TextBox)scaleBox.FindName("TextBox");
+                boxText.Text = "101.50";
+                scaleBox.CommitEdit(); // same path as Enter / LostFocus
+                coinCard.UpdateLayout();
+                Console.WriteLine($"after box edit: vm=({vm.EtalonPhotoScale}, {vm.EtalonPhotoAngle}) transform=({st.ScaleX}, {rt.Angle}) box={boxText.Text}");
+                // spinner arrow: +1 step (0.01) on the angle box
+                var angleBox = (CoinDetailCompare.App.Controls.NumericUpDown)coinCard.FindName("AngleBox");
+                var up = (System.Windows.Controls.Primitives.RepeatButton)angleBox.FindName("UpButton");
+                up.RaiseEvent(new System.Windows.RoutedEventArgs(
+                    System.Windows.Controls.Primitives.ButtonBase.ClickEvent, up));
+                coinCard.UpdateLayout();
+                var angleBoxText = (System.Windows.Controls.TextBox)angleBox.FindName("TextBox");
+                Console.WriteLine($"after arrow: vm=({vm.EtalonPhotoScale}, {vm.EtalonPhotoAngle}) transform=({st.ScaleX}, {rt.Angle}) angleBox={angleBoxText.Text}");
+                // the diff layer must follow the etalon photo's rotation/zoom
+                var diffOverlay = (System.Windows.Controls.Image)coinCard.FindName("DiffOverlay");
+                var dtg = (System.Windows.Media.TransformGroup)diffOverlay.RenderTransform;
+                var dst = (System.Windows.Media.ScaleTransform)dtg.Children[0];
+                var drot = (System.Windows.Media.RotateTransform)dtg.Children[1];
+                Console.WriteLine($"diff overlay: loaded={diffOverlay.Source != null} transform=({dst.ScaleX}, {drot.Angle}) etalon=({st.ScaleX}, {rt.Angle}) inSync={(dst.ScaleX == st.ScaleX && drot.Angle == rt.Angle)}");
+                Console.WriteLine($"vm.DiffImage={(vm.DiffImage != null)} status={vm.Status}");
+                Console.WriteLine("step: create picker");
+                var picker = new CoinDetailCompare.App.Views.ColorPickerWindow(
+                    System.Windows.Media.Color.FromRgb(0x00, 0xE5, 0xFF)) { Owner = coinCard };
+                Console.WriteLine("step: show dialog");
+                var t2 = new System.Windows.Threading.DispatcherTimer
+                {
+                    Interval = TimeSpan.FromSeconds(1)
+                };
+                t2.Tick += (s2, e2) =>
+                {
+                    try
+                    {
+                        // click the 2nd preset swatch (red), then OK
+                        var grid = (System.Windows.Controls.Primitives.UniformGrid)picker.FindName("SwatchGrid");
+                        var swatch = (System.Windows.Controls.Button)grid.Children[1];
+                        swatch.RaiseEvent(new System.Windows.RoutedEventArgs(
+                            System.Windows.Controls.Primitives.ButtonBase.ClickEvent, swatch));
+                        var ok = (System.Windows.Controls.Button)picker.FindName("OkButton");
+                        ok.RaiseEvent(new System.Windows.RoutedEventArgs(
+                            System.Windows.Controls.Primitives.ButtonBase.ClickEvent, ok));
+                    }
+                    catch (System.Exception ex) { Console.WriteLine("PICK ERROR: " + ex); }
+                };
+                t2.Start();
+                var result = picker.ShowDialog();
+                Console.WriteLine("Picker result=" + result + " color=" + picker.PickedColor);
+            }
+            catch (System.Exception ex) { Console.WriteLine("CARD PICK ERROR: " + ex); }
+            app.Shutdown();
+        };
+        timer.Start();
+        app.Run();
         return 0;
     }
 }

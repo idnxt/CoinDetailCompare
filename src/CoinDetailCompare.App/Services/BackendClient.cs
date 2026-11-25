@@ -45,6 +45,15 @@ public class BackendClient
     public async Task<VectorRegenResponse?> RegenerateVectorAsync(VectorRegenRequest req)
         => await ContinueAsync<VectorRegenResponse>(_http.PostAsJsonAsync("/vector/regenerate", req, Opts));
 
+    /// <summary>Transparent PNG diff layer: the coin vs its etalon (one side),
+    /// rotation-aligned and warped back to the raw crop frame.</summary>
+    public async Task<byte[]?> DiffImageAsync(int coinId, int etalonId, string side)
+    {
+        var resp = await _http.GetAsync(
+            $"/compare/image?coin_id={coinId}&etalon_coin_id={etalonId}&side={side}");
+        return resp.IsSuccessStatusCode ? await resp.Content.ReadAsByteArrayAsync() : null;
+    }
+
     public async Task<NumistaSearchResponse?> NumistaSearchAsync(NumistaSearchRequest req)
         => await ContinueAsync<NumistaSearchResponse>(_http.PostAsJsonAsync("/numista/search", req, Opts));
 

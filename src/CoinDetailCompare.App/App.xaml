@@ -6,6 +6,7 @@
         <conv:InverseBoolConverter x:Key="InverseBool" />
         <conv:PercentConverter x:Key="Pct" />
         <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
+        <conv:OpacityConverter x:Key="Opacity01" />
         <Style x:Key="Card" TargetType="Border">
             <Setter Property="Background" Value="#FFF5F6F8" />
             <Setter Property="BorderBrush" Value="#FFDDDDDD" />

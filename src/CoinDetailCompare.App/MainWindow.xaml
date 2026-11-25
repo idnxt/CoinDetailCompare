@@ -13,6 +13,16 @@
                     <Button Content="{Binding CatalogTitle, Source={StaticResource Strings}}"
                             Command="{Binding OpenCatalogCommand}"
                             Margin="0,0,10,0" />
+                    <Button Content="{Binding BackendToggleText}"
+                            Command="{Binding ToggleBackendCommand}"
+                            IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}"
+                            ToolTip="{Binding BackendStateText}"
+                            Margin="0,0,6,0" />
+                    <Ellipse Width="10" Height="10" VerticalAlignment="Center"
+                             Fill="{Binding BackendIndicatorBrush}"
+                             Margin="0,0,6,0" />
+                    <TextBlock Text="{Binding BackendStateText}" Foreground="#FFF0F0F0"
+                               VerticalAlignment="Center" Margin="0,0,10,0" />
                     <Button Content="GPU"
                             Command="{Binding SetupGpuCommand}"
                             ToolTip="{Binding GpuSetupTitle, Source={StaticResource Strings}}"
@@ -34,33 +44,11 @@
                 <ColumnDefinition Width="320" />
             </Grid.ColumnDefinitions>
 
-            <!-- ===== Left: Capture ===== -->
+            <!-- ===== Left: Capture entry + manual file load ===== -->
             <Border Grid.Column="0" Style="{StaticResource Card}" Margin="0,0,8,0">
                 <StackPanel>
-                    <TextBlock Style="{StaticResource Title}" Text="{Binding CaptureSection, Source={StaticResource Strings}}" />
-
-                    <TextBlock Text="{Binding CaptureAlbum, Source={StaticResource Strings}}" Margin="0,6,0,2" />
-                    <TextBox Text="{Binding Album, UpdateSourceTrigger=PropertyChanged}" />
-                    <Grid Margin="0,6,0,0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0" Margin="0,0,6,0">
-                            <TextBlock Text="{Binding CapturePage, Source={StaticResource Strings}}" />
-                            <TextBox Text="{Binding PageNo}" />
-                        </StackPanel>
-                        <StackPanel Grid.Column="1" Margin="0,0,6,0">
-                            <TextBlock Text="{Binding CaptureOrder, Source={StaticResource Strings}}" />
-                            <TextBox Text="{Binding OrderNo}" />
-                        </StackPanel>
-                        <StackPanel Grid.Column="2">
-                            <TextBlock Text="{Binding CaptureRotation, Source={StaticResource Strings}}" />
-                            <TextBox Text="{Binding Rotation}" />
-                        </StackPanel>
-                    </Grid>
-
+                    <Button Style="{StaticResource Btn}" Content="{Binding CaptureOpenCamera, Source={StaticResource Strings}}"
+                            Command="{Binding OpenCameraCommand}" />
                     <Separator Margin="0,10" />
                     <Button Style="{StaticResource Btn}" Content="{Binding CaptureLoadObverse, Source={StaticResource Strings}}"
                             Command="{Binding LoadObverseFileCommand}" />
@@ -68,65 +56,6 @@
                             Command="{Binding LoadReverseFileCommand}" />
                     <Button Style="{StaticResource Btn}" Content="{Binding CaptureSwapSides, Source={StaticResource Strings}}"
                             Command="{Binding SwapSidesCommand}" />
-
-                    <Separator Margin="0,10" />
-                    <TextBlock Style="{StaticResource Title}" Text="{Binding CaptureBatchMode, Source={StaticResource Strings}}" />
-                    <TextBlock Text="{Binding CaptureAlbum, Source={StaticResource Strings}}" Margin="0,4,0,2" />
-                    <TextBox Text="{Binding BatchAlbum, UpdateSourceTrigger=PropertyChanged}" />
-                    <Grid Margin="0,4,0,0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0" Margin="0,0,6,0">
-                            <TextBlock Text="{Binding CapturePage, Source={StaticResource Strings}}" />
-                            <TextBox Text="{Binding BatchPage}" />
-                        </StackPanel>
-                        <StackPanel Grid.Column="1">
-                            <TextBlock Text="{Binding CaptureBatchCoins, Source={StaticResource Strings}}" />
-                            <TextBox Text="{Binding BatchCount}" />
-                        </StackPanel>
-                    </Grid>
-                    <Button Style="{StaticResource Btn}" Content="{Binding CaptureOpenCamera, Source={StaticResource Strings}}"
-                            Command="{Binding OpenCameraCommand}" />
-                    <Button Style="{StaticResource Btn}" Content="{Binding CaptureStartBatch, Source={StaticResource Strings}}"
-                            Command="{Binding StartBatchCommand}"
-                            IsEnabled="{Binding BatchActive, Converter={StaticResource InverseBool}}" />
-                    <Button Style="{StaticResource Btn}" Content="{Binding CaptureCaptureFrame, Source={StaticResource Strings}}"
-                            Command="{Binding CaptureNextCommand}"
-                            IsEnabled="{Binding BatchActive}" />
-                    <Button Style="{StaticResource Btn}" Content="{Binding CaptureCancelBatch, Source={StaticResource Strings}}"
-                            Command="{Binding CancelBatchCommand}"
-                            IsEnabled="{Binding BatchActive}" />
-                    <Button Style="{StaticResource Btn}" Content="{Binding CaptureSaveAll, Source={StaticResource Strings}}"
-                            Command="{Binding SaveBatchCommand}"
-                            Visibility="Collapsed" />
-                    <TextBlock Text="{Binding BatchStatus}" Margin="0,6,0,0" TextWrapping="Wrap" />
-                    <ListView ItemsSource="{Binding BatchResults}" Height="140" Margin="0,6,0,0"
-                              >
-                        <ListView.ItemTemplate>
-                            <DataTemplate>
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="{Binding OrderNo}" Margin="0,0,8,0" />
-                                    <TextBlock Grid.Column="1" Text="{Binding ObversePct, Converter={StaticResource Pct}}" />
-                                    <TextBlock Grid.Column="2" Text="{Binding ReversePct, Converter={StaticResource Pct}}" />
-                                    <TextBlock Grid.Column="3" Text="{Binding Status}" Margin="8,0,0,0" />
-                                </Grid>
-                            </DataTemplate>
-                        </ListView.ItemTemplate>
-                    </ListView>
-
-                    <Separator Margin="0,10" />
-                    <TextBlock Text="{Binding CaptureObverse, Source={StaticResource Strings}}" FontWeight="SemiBold" Margin="0,0,0,2" />
-                    <Image Source="{Binding ObverseImage}" Height="180" Stretch="Uniform" />
-                    <TextBlock Text="{Binding CaptureReverse, Source={StaticResource Strings}}" FontWeight="SemiBold" Margin="0,8,0,2" />
-                    <Image Source="{Binding ReverseImage}" Height="180" Stretch="Uniform" />
                 </StackPanel>
             </Border>
 
