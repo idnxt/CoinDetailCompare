@@ -188,6 +188,31 @@ def create_app() -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc))
 
+    @app.get("/debug/vram")
+    def debug_vram():
+        """What the process actually holds on the GPU right now."""
+        try:
+            import torch
+            out = {"cuda_available": torch.cuda.is_available()}
+            if torch.cuda.is_available():
+                out["allocated_mb"] = round(torch.cuda.memory_allocated() / 1e6, 1)
+                out["reserved_mb"] = round(torch.cuda.memory_reserved() / 1e6, 1)
+                stats = torch.cuda.memory_stats()
+                out["active_bytes_all"] = stats.get("active_bytes.all")
+                out["segment_pool_all"] = stats.get("segment_pool.all")
+                model = getattr(EMBEDDER, "model", None)
+                out["embedder_device"] = str(model.device) if model is not None else "n/a"
+                backend = getattr(ANOMALY, "_backend", None)
+                if backend:
+                    name, det = backend
+                    out["anomaly_backend"] = name
+                    if name == "anomalydino":
+                        dev = next(det.parameters()).device
+                        out["anomaly_detector_device"] = str(dev)
+        except Exception as exc:
+            out["error"] = str(exc)
+        return out
+
     @app.get("/references")
     def references(kind: str | None = None):
         """Reference lists (quality, rim, orientation, country) for UI dropdowns."""
