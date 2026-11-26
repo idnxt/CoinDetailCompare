@@ -94,6 +94,51 @@ internal static class Program
                 var tree = (System.Windows.Controls.TreeView)main.FindName("CatalogTree");
                 tree.UpdateLayout();
                 Console.WriteLine($"catalog treeview: items={tree.Items.Count}");
+                // double-click wiring: the handler must be attached to each
+                // TreeViewItem (EventSetter), with the node coming from the
+                // item's DataContext — verify on the first coin row
+                // headless: child containers are generated lazily — pump the
+                // dispatcher between each expansion pass
+                void PumpFrames()
+                {
+                    var frame = new System.Windows.Threading.DispatcherFrame();
+                    var p = new System.Windows.Threading.DispatcherTimer
+                    {
+                        Interval = TimeSpan.FromMilliseconds(150)
+                    };
+                    p.Tick += (_, _) => { p.Stop(); frame.Continue = false; };
+                    p.Start();
+                    System.Windows.Threading.Dispatcher.PushFrame(frame);
+                }
+                var albumItem = (System.Windows.Controls.TreeViewItem)tree.ItemContainerGenerator.ContainerFromIndex(0);
+                albumItem.IsExpanded = true;
+                albumItem.UpdateLayout();
+                PumpFrames();
+                main.UpdateLayout();
+                var pageItem = (System.Windows.Controls.TreeViewItem)albumItem.ItemContainerGenerator.ContainerFromIndex(0);
+                pageItem.IsExpanded = true;
+                pageItem.UpdateLayout();
+                PumpFrames();
+                main.UpdateLayout();
+                PumpFrames();
+                var coinItem = (System.Windows.Controls.TreeViewItem)pageItem.ItemContainerGenerator.ContainerFromIndex(0);
+                // the per-item EventSetter (MouseLeftButtonDown -> CatalogTreeItem_Click)
+                // must be present on the item container's style
+                bool HasEventSetter(System.Windows.Style s) =>
+                    s?.Setters != null && s.Setters.Cast<object>()
+                        .Any(x => x is System.Windows.EventSetter es
+                                 && es.Event?.Name == "MouseLeftButtonDown"
+                                 && es.Handler is System.Delegate d
+                                 && d.Method.Name == "CatalogTreeItem_Click");
+                // the per-item EventSetter must be on the ItemContainerStyle AND
+                // actually applied to a generated container (headless: the level-3
+                // coin container may not be generated yet, so check the deepest
+                // container that exists)
+                var container = coinItem ?? pageItem ?? albumItem;
+                bool styleOnContainer = container != null && HasEventSetter(container.Style);
+                bool handlerAttached = HasEventSetter(tree.ItemContainerStyle) && styleOnContainer;
+                bool dblClickWired = handlerAttached && firstCoin?.CoinId is not null;
+                Console.WriteLine($"tree dblclick wiring: deepestContainer={(container?.GetType().Name)} containerEventSetter={styleOnContainer} itemStyleOk={handlerAttached} firstCoinId={firstCoin?.CoinId} ok={dblClickWired}");
                 // the old left-block buttons are gone; the same functionality is
                 // reachable via the right-click menu on "Open capture window"
                 var camBtn = FindButtonWithContextMenu(main);

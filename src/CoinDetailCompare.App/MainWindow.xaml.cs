@@ -12,12 +12,13 @@ public partial class MainWindow : Window
         InitializeComponent();
     }
 
-    /// <summary>Double-click on a coin row of the catalog tree opens its card.</summary>
-    private void CatalogTree_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    /// <summary>Double-click on a catalog tree row opens the coin's card.
+    /// The node is read from the clicked item (DataContext), not from
+    /// TreeView.SelectedItem — the selection state can lag the click.</summary>
+    private void CatalogTreeItem_Click(object sender, MouseButtonEventArgs e)
     {
         if (e.ClickCount < 2) return;
-        var node = ((TreeView)sender).SelectedItem as CatalogTreeNode;
-        if (node is null) return;
+        if (sender is not TreeViewItem { DataContext: CatalogTreeNode node }) return;
         (DataContext as MainViewModel)?.EditCoinFromTreeCommand.Execute(node);
     }
 }

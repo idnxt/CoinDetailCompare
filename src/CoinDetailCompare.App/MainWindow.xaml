@@ -11,9 +11,6 @@
         <Border DockPanel.Dock="Bottom" Background="#FF2B2E33" Padding="10,6">
             <DockPanel>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                    <Button Content="{Binding CatalogTitle, Source={StaticResource Strings}}"
-                            Command="{Binding OpenCatalogCommand}"
-                            Margin="0,0,10,0" />
                     <Button Content="{Binding BackendToggleText}"
                             Command="{Binding ToggleBackendCommand}"
                             IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}"
@@ -84,8 +81,16 @@
 
                     <TreeView Grid.Row="3" x:Name="CatalogTree"
                               ItemsSource="{Binding CatalogTreeRoots}"
-                              Margin="0,6,0,0"
-                              MouseLeftButtonUp="CatalogTree_MouseLeftButtonUp">
+                              Margin="0,6,0,0">
+                        <!-- Double-click is wired per item (EventSetter), reading
+                             the node from the item itself instead of
+                             TreeView.SelectedItem, whose selection state can
+                             lag behind the click. -->
+                        <TreeView.ItemContainerStyle>
+                            <Style TargetType="TreeViewItem">
+                                <EventSetter Event="MouseLeftButtonDown" Handler="CatalogTreeItem_Click" />
+                            </Style>
+                        </TreeView.ItemContainerStyle>
                         <TreeView.Resources>
                             <HierarchicalDataTemplate x:Key="TreeT"
                                                       DataType="{x:Type vm:CatalogTreeNode}"
