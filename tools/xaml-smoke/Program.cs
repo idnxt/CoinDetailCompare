@@ -64,7 +64,10 @@ internal static class Program
         Console.WriteLine("CaptureWindow OK: " + capture.Width + "x" + capture.Height);
 
         var main = new MainWindow { DataContext = vm };
+        app.MainWindow = main; // App.xaml StartupUri equivalent; without it the first
+        // constructed window (the unshown CaptureWindow) becomes MainWindow
         Console.WriteLine("MainWindow OK");
+        var mvm = vm; // the card's VM shadows `vm` later in the test
 
         var coinCard = new CoinDetailCompare.App.Views.CoinCardWindow(4, settings, backend, db, loc);
         Console.WriteLine("CoinCardWindow OK");
@@ -80,6 +83,49 @@ internal static class Program
             Console.WriteLine("Card settled.");
             try
             {
+                Console.WriteLine("step: catalog tree");
+                main.Show();
+                main.UpdateLayout();
+                var roots = mvm.CatalogTreeRoots;
+                var firstAlbum = roots.FirstOrDefault(a => !a.IsLocked);
+                var countries = roots.FirstOrDefault(a => a.IsLocked);
+                var firstCoin = firstAlbum?.Children.FirstOrDefault()?.Children.FirstOrDefault()?.Children.FirstOrDefault();
+                Console.WriteLine($"catalog tree: rootTitles=[{string.Join(" | ", roots.Select(r => r.Title + (r.IsLocked ? " (locked)" : "")))}] albums={firstAlbum?.Children.Count} firstAlbumPages={firstAlbum?.Children.FirstOrDefault()?.Children.Count} firstPageCoins={firstAlbum?.Children.FirstOrDefault()?.Children.FirstOrDefault()?.Children.Count} firstCoin='{firstCoin?.Title}' coinId={firstCoin?.CoinId} countriesLocked={countries?.IsLocked}");
+                var tree = (System.Windows.Controls.TreeView)main.FindName("CatalogTree");
+                tree.UpdateLayout();
+                Console.WriteLine($"catalog treeview: items={tree.Items.Count}");
+                // the old left-block buttons are gone; the same functionality is
+                // reachable via the right-click menu on "Open capture window"
+                var camBtn = FindButtonWithContextMenu(main);
+                Console.WriteLine($"capture ctxmenu: found={camBtn != null} items={camBtn?.ContextMenu.Items.Count}");
+                Console.WriteLine($"load cmds alive: obverse={mvm.LoadObverseFileCommand.CanExecute(null)} reverse={mvm.LoadReverseFileCommand.CanExecute(null)} swap={mvm.SwapSidesCommand.CanExecute(null)}");
+                // double-click a coin row: the card opens; a timer closes it so
+                // the headless test can continue (ShowDialog blocks the stack)
+                if (firstCoin != null)
+                {
+                    var closer = new System.Windows.Threading.DispatcherTimer
+                    {
+                        Interval = TimeSpan.FromSeconds(5)
+                    };
+                    closer.Tick += (s, e) =>
+                    {
+                        foreach (var w in Application.Current.Windows)
+                        {
+                            if (w is System.Windows.Window win
+                                && win.GetType() == typeof(CoinDetailCompare.App.Views.CoinCardWindow)
+                                && win != coinCard && win.IsVisible)
+                                win.Close();
+                        }
+                    };
+                    closer.Start();
+                    // the double-click handler (ClickCount >= 2 on the TreeView)
+                    // resolves the selected node and calls this command; the
+                    // mouse event itself can't be faked (MouseDevice is abstract),
+                    // so drive the same chain directly
+                    mvm.EditCoinFromTreeCommand.Execute(firstCoin);
+                    closer.Stop();
+                    Console.WriteLine($"tree double-click: card opened and closed; tree roots after refresh={mvm.CatalogTreeRoots.Count}");
+                }
                 Console.WriteLine("step: show card");
                 coinCard.Show();
                 coinCard.UpdateLayout();
@@ -282,5 +328,19 @@ internal static class Program
         timer.Start();
         app.Run();
         return 0;
+    }
+
+    /// <summary>First button in the visual tree that has a context menu.</summary>
+    static System.Windows.Controls.Button? FindButtonWithContextMenu(System.Windows.Media.Visual root)
+    {
+        int n = System.Windows.Media.VisualTreeHelper.GetChildrenCount(root);
+        for (int i = 0; i < n; i++)
+        {
+            var child = (System.Windows.Media.Visual)System.Windows.Media.VisualTreeHelper.GetChild(root, i);
+            if (child is System.Windows.Controls.Button b && b.ContextMenu != null) return b;
+            var r = FindButtonWithContextMenu(child);
+            if (r != null) return r;
+        }
+        return null;
     }
 }

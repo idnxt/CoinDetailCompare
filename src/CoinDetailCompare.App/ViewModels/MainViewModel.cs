@@ -129,6 +129,9 @@ public class MainViewModel : ObservableObject
         ClearAnnotationsCommand = new RelayCommand(ClearAnnotations);
         SaveAnnotationsCommand = new RelayCommand(async () => await SaveAnnotationsAsync());
         OpenCatalogCommand = new RelayCommand(OpenCatalog);
+        RefreshCatalogTreeCommand = new RelayCommand(RefreshCatalogTree);
+        EditCoinFromTreeCommand = new RelayCommand<CatalogTreeNode>(EditCoinFromTree);
+        RefreshCatalogTree();
 
         _ = LoadReferencesAsync();
     }
@@ -338,6 +341,8 @@ public class MainViewModel : ObservableObject
     public RelayCommand ValidateNumistaCommand { get; }
     public RelayCommand ApplyNumistaItemCommand { get; }
     public RelayCommand OpenCatalogCommand { get; }
+    public RelayCommand RefreshCatalogTreeCommand { get; }
+    public RelayCommand<CatalogTreeNode> EditCoinFromTreeCommand { get; }
 
     public string T(string key) => _loc.T(key);
 
@@ -923,7 +928,93 @@ public class MainViewModel : ObservableObject
     {
         var win = new CoinDetailCompare.App.Views.CatalogWindow(_settings, _backend, _db, _loc);
         win.Owner = System.Windows.Application.Current?.MainWindow;
+        win.Closed += (_, _) => RefreshCatalogTree();
         win.Show();
+    }
+
+    // ==================== left catalog tree ====================
+    private ObservableCollection<CatalogTreeNode> _catalogTreeRoots = new();
+    public ObservableCollection<CatalogTreeNode> CatalogTreeRoots
+    {
+        get => _catalogTreeRoots;
+        private set => SetProperty(ref _catalogTreeRoots, value);
+    }
+
+    /// <summary>Rebuild the left catalog tree:
+    /// "Альбомы" → "Альбом {имя}" → "Страница {N}" → coins
+    /// (номер, вид Э/Д/А, наименование, год) plus the locked "Страны" branch.</summary>
+    public void RefreshCatalogTree()
+    {
+        try
+        {
+            var coins = _db.ListAllCoins();
+            var albums = new CatalogTreeNode { Title = T("catalog.albums") };
+            var albumNames = coins
+                .Select(c => string.IsNullOrWhiteSpace(c.AlbumName) ? "" : c.AlbumName!)
+                .Distinct()
+                .OrderBy(a => a, StringComparer.CurrentCulture);
+            foreach (var album in albumNames)
+            {
+                var inAlbum = coins.Where(c =>
+                    (string.IsNullOrWhiteSpace(c.AlbumName) ? "" : c.AlbumName!) == album);
+                var albumNode = new CatalogTreeNode
+                {
+                    Title = album == "" ? T("catalog.no_album") : string.Format(T("catalog.album"), album)
+                };
+                var pages = inAlbum.Select(c => c.PageNo ?? 0).Distinct().OrderBy(p => p);
+                foreach (var page in pages)
+                {
+                    var pageNode = new CatalogTreeNode
+                    {
+                        Title = page == 0 ? T("catalog.no_page") : string.Format(T("catalog.page"), page)
+                    };
+                    var onPage = inAlbum
+                        .Where(c => (c.PageNo ?? 0) == page)
+                        .OrderBy(c => c.OrderNo ?? 0)
+                        .ThenBy(c => c.Id);
+                    foreach (var coin in onPage)
+                        pageNode.Children.Add(BuildCoinTreeNode(coin));
+                    albumNode.Children.Add(pageNode);
+                }
+                albums.Children.Add(albumNode);
+            }
+            var countries = new CatalogTreeNode
+            {
+                Title = T("catalog.countries"),
+                IsLocked = true
+            };
+            CatalogTreeRoots = new ObservableCollection<CatalogTreeNode> { albums, countries };
+        }
+        catch (System.Exception ex)
+        {
+            Status = $"{T("status.error")}: {ex.Message}";
+        }
+    }
+
+    /// <summary>Leaf coin node: "номер, вид, наименование, год".</summary>
+    private CatalogTreeNode BuildCoinTreeNode(Coin c)
+    {
+        var name = c.TypeId is int tid ? _db.GetCoinType(tid)?.Name : null;
+        if (string.IsNullOrWhiteSpace(name)) name = $"#{c.Id}";
+        var parts = new List<string>();
+        if (c.OrderNo is int o) parts.Add(o.ToString());
+        parts.Add(CatalogViewModel.KindFor(c));
+        parts.Add(name!);
+        if (!string.IsNullOrWhiteSpace(c.MintYear)) parts.Add(c.MintYear!);
+        return new CatalogTreeNode { Title = string.Join(", ", parts), CoinId = c.Id };
+    }
+
+    /// <summary>Double-click on a coin in the catalog tree opens its card.</summary>
+    private void EditCoinFromTree(CatalogTreeNode? node)
+    {
+        if (node is null || node.IsLocked || node.CoinId is not int coinId) return;
+        var win = new CoinDetailCompare.App.Views.CoinCardWindow(coinId, _settings, _backend, _db, _loc);
+        // Owner must be a window that has already been shown (setting it to a
+        // hidden window throws InvalidOperationException), so only attach when visible.
+        var owner = System.Windows.Application.Current?.MainWindow;
+        win.Owner = owner is not null && owner.IsVisible ? owner : null;
+        win.ShowDialog();
+        RefreshCatalogTree();
     }
 
     /// <summary>Reload the photos (current + etalon) and heatmap for CompareSide.</summary>
@@ -1008,6 +1099,7 @@ public class MainViewModel : ObservableObject
             _db.SaveCoin(coin);
             _currentCoinId = id;
             Status = T("status.saved");
+            RefreshCatalogTree();
             if (clearPreviews)
             {
                 _obversePath = null;

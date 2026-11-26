@@ -158,6 +158,7 @@ public class Strings : INotifyPropertyChanged
     public string CatalogName => this["catalog.name"];
     public string CatalogYear => this["catalog.year"];
     public string CatalogEdit => this["catalog.edit"];
+    public string CatalogTreeHint => this["catalog.tree_hint"];
 
     // kind
     public string KindLabel => this["kind.label"];
