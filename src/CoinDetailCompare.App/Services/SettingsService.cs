@@ -44,6 +44,7 @@ public class AppSettings
     // Card layers: applied to every opened card, persisted on change.
     public CardLayerSettings LayerDiff { get; set; } = new();
     public CardLayerSettings LayerEtalonPhoto { get; set; } = new();
+    public CardLayerSettings LayerHeatmap { get; set; } = new();
 
     [JsonIgnore]
     public string BackendBaseUrl => $"http://{BackendHost}:{BackendPort}";

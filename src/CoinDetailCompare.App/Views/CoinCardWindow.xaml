@@ -22,11 +22,20 @@
                     <TextBlock Style="{StaticResource Title}" Text="{Binding SideName}" />
                 </DockPanel>
 
-                <!-- layer toggles: heatmap + annotations -->
+                <!-- layer toggles: heatmap (with opacity) + annotations -->
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                    <CheckBox Content="{Binding CompareHeatmap, Source={StaticResource Strings}}"
-                              IsChecked="{Binding ShowHeatmap}" VerticalAlignment="Center" Margin="0,0,12,0"
-                              IsEnabled="{Binding HasEffectiveEtalon}" />
+                    <StackPanel Width="180" Margin="0,0,16,0">
+                        <StackPanel Orientation="Horizontal">
+                            <Slider x:Name="HeatmapOpacitySlider" Width="66"
+                                    Minimum="0" Maximum="100" VerticalAlignment="Center"
+                                    Value="{Binding HeatmapOpacity}"
+                                    ToolTip="{Binding CardOpacity, Source={StaticResource Strings}}" />
+                            <TextBlock Text="{Binding HeatmapOpacity}" VerticalAlignment="Center"
+                                       Margin="3,0,0,0" FontSize="11" />
+                        </StackPanel>
+                        <CheckBox Content="{Binding CompareHeatmap, Source={StaticResource Strings}}"
+                                  IsChecked="{Binding ShowHeatmap}" Margin="0,3,0,0" />
+                    </StackPanel>
                     <CheckBox Content="{Binding CardAnnotations, Source={StaticResource Strings}}"
                               IsChecked="{Binding ShowAnnotations}" VerticalAlignment="Center" />
                 </StackPanel>
@@ -47,8 +56,7 @@
                                        Margin="3,0,0,0" FontSize="11" />
                         </StackPanel>
                         <CheckBox Content="{Binding CardLayerDiff, Source={StaticResource Strings}}"
-                                  IsChecked="{Binding ShowDiffLayer}" Margin="0,3,0,0"
-                                   IsEnabled="{Binding HasEffectiveEtalon}" />
+                                  IsChecked="{Binding ShowDiffLayer}" Margin="0,3,0,0" />
                     </StackPanel>
                     <StackPanel Width="200" Margin="0,0,16,0">
                         <StackPanel Orientation="Horizontal">
@@ -60,8 +68,7 @@
                                        Margin="3,0,0,0" FontSize="11" />
                         </StackPanel>
                         <CheckBox Content="{Binding CardLayerEtalonPhoto, Source={StaticResource Strings}}"
-                                  IsChecked="{Binding ShowEtalonPhoto}" Margin="0,3,0,0"
-                                  IsEnabled="{Binding HasEffectiveEtalon}" />
+                                  IsChecked="{Binding ShowEtalonPhoto}" Margin="0,3,0,0" />
                         <!-- manual rotation / zoom: slider + 0.01-precision box (zoom base 100) -->
                         <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
                             <TextBlock Text="{Binding CardAngle, Source={StaticResource Strings}}"
@@ -83,6 +90,25 @@
                                                    Minimum="80" Maximum="120" Step="0.01"
                                                    VerticalAlignment="Center" />
                         </StackPanel>
+                        <!-- manual XY shift (px, -100..100, base 0, 0.01 precision) -->
+                        <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                            <TextBlock Text="X" VerticalAlignment="Center" Margin="0,0,4,0" />
+                            <Slider x:Name="EtalonPhotoXSlider" Width="66" Minimum="-100" Maximum="100"
+                                    Value="{Binding EtalonPhotoOffsetX}" VerticalAlignment="Center" />
+                            <controls:NumericUpDown x:Name="XBox" Width="74" Margin="3,0,0,0"
+                                                    Value="{Binding EtalonPhotoOffsetX, Mode=TwoWay}"
+                                                    Minimum="-100" Maximum="100" Step="0.01"
+                                                    VerticalAlignment="Center" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                            <TextBlock Text="Y" VerticalAlignment="Center" Margin="0,0,4,0" />
+                            <Slider x:Name="EtalonPhotoYSlider" Width="66" Minimum="-100" Maximum="100"
+                                    Value="{Binding EtalonPhotoOffsetY}" VerticalAlignment="Center" />
+                            <controls:NumericUpDown x:Name="YBox" Width="74" Margin="3,0,0,0"
+                                                    Value="{Binding EtalonPhotoOffsetY, Mode=TwoWay}"
+                                                    Minimum="-100" Maximum="100" Step="0.01"
+                                                    VerticalAlignment="Center" />
+                        </StackPanel>
                     </StackPanel>
                 </StackPanel>
 
@@ -90,7 +116,7 @@
                 <Grid>
                     <Image Source="{Binding BaseImage}" Stretch="Uniform" />
                     <Image Source="{Binding HeatmapImage}" Stretch="Uniform"
-                           Opacity="0.55"
+                           Opacity="{Binding HeatmapOpacity, Converter={StaticResource Opacity01}}"
                            Visibility="{Binding ShowHeatmap, Converter={StaticResource BoolToVis}}" />
                     <!-- diff layer (etalon/current): direct |a-b| of the raw crops;
                          follows the etalon photo's rotation/zoom (same transform) -->
@@ -103,10 +129,12 @@
                                 <ScaleTransform ScaleX="{Binding EtalonPhotoScale}"
                                                 ScaleY="{Binding EtalonPhotoScale}" />
                                 <RotateTransform Angle="{Binding EtalonPhotoAngle}" />
+                                <TranslateTransform X="{Binding EtalonPhotoOffsetX}"
+                                                   Y="{Binding EtalonPhotoOffsetY}" />
                             </TransformGroup>
                         </Image.RenderTransform>
                     </Image>
-                    <!-- manual etalon photo: drag = rotate around center, wheel = zoom -->
+                    <!-- manual etalon photo: drag = shift along X/Y (±100 px), wheel = zoom -->
                     <Image x:Name="EtalonPhotoOverlay" Source="{Binding EtalonPhotoImage}"
                            Stretch="Uniform"
                            Opacity="{Binding EtalonPhotoOpacity, Converter={StaticResource Opacity01}}"
@@ -122,6 +150,8 @@
                                 <ScaleTransform ScaleX="{Binding EtalonPhotoScale}"
                                                 ScaleY="{Binding EtalonPhotoScale}" />
                                 <RotateTransform Angle="{Binding EtalonPhotoAngle}" />
+                                <TranslateTransform X="{Binding EtalonPhotoOffsetX}"
+                                                   Y="{Binding EtalonPhotoOffsetY}" />
                             </TransformGroup>
                         </Image.RenderTransform>
                     </Image>

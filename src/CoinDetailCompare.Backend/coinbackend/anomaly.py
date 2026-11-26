@@ -394,7 +394,8 @@ class AnomalyDetector:
         # different rim margins (crop noise). Compare them in a canonical
         # frame: coin centered, fixed radius, residual rotation removed
         # against the best reference.
-        q, total = _canonicalize(query, _detect_coin_circle(query))
+        qcircle = _detect_coin_circle(query)
+        q, total = _canonicalize(query, qcircle)
 
         # Rotation: align the query to the etalon (best reference) by
         # full-disc NCC in the canonical frame (see _estimate_rotation).
@@ -413,7 +414,19 @@ class AnomalyDetector:
                 )
                 total = _compose(total, rot)
 
-        bank = self._build_memory_bank(reference_ids, side, ref0_canon)
+        # Keep embedding cost bounded: a user-selectable grid (8..128) on a
+        # downscaled canvas, then bilinearly upscale the distance map to the
+        # requested heatmap size.  The bank MUST be sampled on this same
+        # canvas/grid: a query detail (e.g. 64px at full res) is only
+        # meaningful against reference patches of the identical scale.
+        # The old code fed 256px quadrants as the bank, so no query patch
+        # ever found a close match and the distance sat near ~0.7 even for
+        # an identical coin (every coin read as an "anomaly").
+        grid = int(patch_grid) if patch_grid else 16
+        grid = max(4, min(128, grid))
+        canvas = max(128, min(1024, grid * 16))
+
+        bank = self._build_memory_bank(reference_ids, side, ref0_canon, grid, canvas)
         if len(bank) == 0:
             # No references: no reliable anomaly estimate.
             return {
@@ -427,12 +440,6 @@ class AnomalyDetector:
                 "note": "no references",
             }
 
-        # Keep embedding cost bounded on CPU: a user-selectable grid (8..128)
-        # on a downscaled canvas, then bilinearly upscale the distance map
-        # to the requested heatmap size.
-        grid = int(patch_grid) if patch_grid else 16
-        grid = max(4, min(128, grid))
-        canvas = max(128, min(1024, grid * 16))
         small = cv2.resize(q, (canvas, canvas), interpolation=cv2.INTER_AREA)
         sh, sw = small.shape[:2]
         dist = np.zeros((grid, grid), dtype="float32")
@@ -447,24 +454,48 @@ class AnomalyDetector:
                 sims = bank_flat @ feat  # (M,)
                 dist[i, j] = 1.0 - float(sims.max())
 
-        # Normalize to [0, 1], then upscale to the requested heatmap size.
-        dmax = float(dist.max()) if dist.size else 0.0
-        norm = dist / dmax if dmax > 0 else dist
+        # Upscale to the requested heatmap size (raw distances; the peak
+        # normalization is done inside the coin disc after the map is back
+        # in the original crop coordinates).
         norm = cv2.resize(
-            norm, (heatmap_size, heatmap_size), interpolation=cv2.INTER_LINEAR
+            dist, (heatmap_size, heatmap_size), interpolation=cv2.INTER_LINEAR
         ).astype("float32")
 
         # Map the heatmap back from the canonical frame to the original crop
         # coordinates, so the overlay matches what the user sees on screen.
+        # cv2.warpAffine(dst) = src(M^-1 * dst): M must send an ORIGINAL crop
+        # point to the downscaled canonical grid, so M = (k*total) and the
+        # matrix to pass is its INVERSE. Passing k*total directly (the old
+        # bug) sampled the 128px grid at ~8x coordinates and collapsed the
+        # whole map into a ~15px blob in the top-left corner.
         h, w = query.shape[:2]
         k = float(heatmap_size) / float(min(w, h))
         norm = cv2.warpAffine(
-            norm, k * total, (w, h),
+            norm, cv2.invertAffineTransform(k * total), (w, h),
             flags=cv2.INTER_LINEAR, borderValue=0.0,
         ).astype("float32")
 
-        image_score = float(np.mean(norm))
+        # Mask the background: patches outside the coin rim have no matching
+        # reference, so their distance saturates near 1 and would make one
+        # photo corner the only hot spot while the coin reads flat. Zero
+        # everything outside the detected coin circle.
+        cx, cy, r = qcircle
+        disc = np.zeros((h, w), "float32")
+        cv2.circle(disc, (int(cx), int(cy)), int(r), 1.0, -1)
+        norm_disc = (norm * disc).astype("float32")
+
+        # Score = mean RAW distance inside the coin. A well-matched coin
+        # sits near 0; a genuinely different surface pushes it up. (Peak
+        # normalization is only for the visual map below — it would
+        # otherwise amplify a tiny uniform difference to ~1 and flag every
+        # well-matched coin as an anomaly.)
+        image_score = float(norm_disc.sum() / float(disc.sum()))
         is_anomaly = image_score >= thr
+
+        # Visual: peak-normalize inside the coin so the strongest surface
+        # difference becomes the hottest color (background stays 0/transparent).
+        dmax = float(norm_disc.max())
+        norm = (norm_disc / dmax).astype("float32") if dmax > 1e-9 else norm_disc
 
         # Bounding boxes: contiguous regions above threshold
         boxes = self._find_boxes(norm, thr)
@@ -477,7 +508,7 @@ class AnomalyDetector:
             heat_mat = norm.astype("float32")
             heat_mat_path = str(self.storage.heatmap_matrix_path(coin_id, side))
             np.save(heat_mat_path, heat_mat)
-            heat_img = self._to_colormap(norm, query.shape)
+            heat_img = self._to_colormap(norm, query.shape, qcircle)
             heat_path = str(self.storage.heatmap_image_path(coin_id, side))
             cv2.imwrite(heat_path, heat_img)
             # Persist the normalized (rotation-aligned) coin so the UI can
@@ -517,7 +548,8 @@ class AnomalyDetector:
         return None
 
     def _build_memory_bank(
-        self, reference_ids: list[int], side: str, ref0_canon: "np.ndarray | None" = None
+        self, reference_ids: list[int], side: str, ref0_canon: "np.ndarray | None" = None,
+        grid: int = 16, canvas: int = 256,
     ) -> list[np.ndarray]:
         import cv2  # type: ignore
 
@@ -540,12 +572,17 @@ class AnomalyDetector:
                         img, rot, (w, h),
                         flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE,
                     )
-            # Sample a few patch features from the reference (4x4 grid:
-            # 16 embeddings per reference — keeps CPU cost bounded).
-            h, w = img.shape[:2]
-            for yy in range(0, h, max(1, h // 4)):
-                for xx in range(0, w, max(1, w // 4)):
-                    patch = img[yy : yy + max(1, h // 4), xx : xx + max(1, w // 4)]
+            # Sample the SAME downscaled canvas and grid as the query, so the
+            # bank patches are at the identical scale to the query patches.
+            # That is what makes a matching coin read ~0 (patch (i,j) here
+            # corresponds to patch (i,j) in the query) instead of ~0.7.
+            small_ref = cv2.resize(img, (canvas, canvas), interpolation=cv2.INTER_AREA)
+            sh, sw = small_ref.shape[:2]
+            ph = max(1, sh // grid)
+            pw = max(1, sw // grid)
+            for yy in range(grid):
+                for xx in range(grid):
+                    patch = small_ref[yy * ph : (yy + 1) * ph, xx * pw : (xx + 1) * pw]
                     if patch.size == 0:
                         continue
                     bank.append(self.embedder.embed_image(patch))
@@ -570,11 +607,25 @@ class AnomalyDetector:
             )
         return boxes
 
-    def _to_colormap(self, norm: np.ndarray, shape: tuple[int, int]) -> "np.ndarray":
+    def _to_colormap(
+        self, norm: np.ndarray, shape: tuple[int, int],
+        circle: "tuple[float, float, float] | None" = None,
+    ) -> "np.ndarray":
+        """JET colormap of the distance map, sized to `shape`.
+
+        When the coin circle (cx, cy, r in `shape` pixels) is given, the
+        result is BGRA and fully transparent outside the disc, so the
+        overlay shows only the coin — not a blue wash over the background.
+        """
         cv2 = _cv2()
         heat = (norm * 255).astype("uint8")
         heat = cv2.resize(heat, (shape[1], shape[0]), interpolation=cv2.INTER_LINEAR)
-        return cv2.applyColorMap(heat, cv2.COLORMAP_JET)
+        bgr = cv2.applyColorMap(heat, cv2.COLORMAP_JET)
+        if circle is None:
+            return bgr
+        alpha = np.zeros((shape[0], shape[1]), "uint8")
+        cv2.circle(alpha, (int(circle[0]), int(circle[1])), int(circle[2]), 255, -1)
+        return cv2.merge([bgr[:, :, 0], bgr[:, :, 1], bgr[:, :, 2], alpha])
 
 
 def _cv2():

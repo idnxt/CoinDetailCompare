@@ -95,7 +95,23 @@ public class CoinCardViewModel : ObservableObject
     public bool ShowHeatmap
     {
         get => _showHeatmap;
-        set => SetProperty(ref _showHeatmap, value);
+        set
+        {
+            if (SetProperty(ref _showHeatmap, value))
+                PersistLayerSettings();
+        }
+    }
+
+    /// <summary>Opacity percent (0-100) of the anomaly heatmap layer.</summary>
+    private double _heatmapOpacity = 55;
+    public double HeatmapOpacity
+    {
+        get => _heatmapOpacity;
+        set
+        {
+            if (SetProperty(ref _heatmapOpacity, Math.Clamp(value, 0, 100)))
+                PersistLayerSettings();
+        }
     }
 
     /// <summary>Visibility of the etalon/current diff layer.</summary>
@@ -188,6 +204,22 @@ public class CoinCardViewModel : ObservableObject
             if (SetProperty(ref _etalonPhotoScale, pct / 100.0, nameof(EtalonPhotoScale)))
                 OnPropertyChanged(nameof(EtalonPhotoScalePct));
         }
+    }
+
+    /// <summary>Etalon-photo shift along X, px (base 0, range -100..100).</summary>
+    private double _etalonPhotoOffsetX;
+    public double EtalonPhotoOffsetX
+    {
+        get => _etalonPhotoOffsetX;
+        set => SetProperty(ref _etalonPhotoOffsetX, Math.Clamp(value, -100, 100));
+    }
+
+    /// <summary>Etalon-photo shift along Y, px (base 0, range -100..100).</summary>
+    private double _etalonPhotoOffsetY;
+    public double EtalonPhotoOffsetY
+    {
+        get => _etalonPhotoOffsetY;
+        set => SetProperty(ref _etalonPhotoOffsetY, Math.Clamp(value, -100, 100));
     }
 
     /// <summary>True when the coin has an etalon above it in the DB.</summary>
@@ -420,6 +452,8 @@ public class CoinCardViewModel : ObservableObject
         _diffOpacity = ClampPct(settings.LayerDiff.Opacity);
         _showEtalonPhoto = settings.LayerEtalonPhoto.Enabled;
         _etalonPhotoOpacity = ClampPct(settings.LayerEtalonPhoto.Opacity);
+        _showHeatmap = settings.LayerHeatmap.Enabled;
+        _heatmapOpacity = ClampPct(settings.LayerHeatmap.Opacity);
 
         AnnotationToolItems.Add(_loc.T("annotation.tool_line"));
         AnnotationToolItems.Add(_loc.T("annotation.tool_ellipse"));
@@ -434,6 +468,8 @@ public class CoinCardViewModel : ObservableObject
         {
             EtalonPhotoAngle = 0;
             EtalonPhotoScale = 1.0;
+            EtalonPhotoOffsetX = 0;
+            EtalonPhotoOffsetY = 0;
         });
         SaveCommand = new RelayCommand(Save);
         UndoAnnotationCommand = new RelayCommand(UndoAnnotation);
@@ -796,6 +832,8 @@ public class CoinCardViewModel : ObservableObject
         // a new etalon preview starts from the identity transform
         EtalonPhotoAngle = 0;
         EtalonPhotoScale = 1.0;
+        EtalonPhotoOffsetX = 0;
+        EtalonPhotoOffsetY = 0;
         RefreshImages();
         Status = string.Format(T("card.preview"), coinId);
         _ = RunCompareAsync();
@@ -809,6 +847,8 @@ public class CoinCardViewModel : ObservableObject
         _previewEtalonId = null;
         EtalonPhotoAngle = 0;
         EtalonPhotoScale = 1.0;
+        EtalonPhotoOffsetX = 0;
+        EtalonPhotoOffsetY = 0;
         RefreshImages();
         if (_etalonId is int eid)
         {
@@ -861,6 +901,8 @@ public class CoinCardViewModel : ObservableObject
             // a new etalon starts from the identity transform
             EtalonPhotoAngle = 0;
             EtalonPhotoScale = 1.0;
+            EtalonPhotoOffsetX = 0;
+            EtalonPhotoOffsetY = 0;
             RefreshImages();
             if (HasEtalon && etalonId is int newEid)
             {
@@ -924,6 +966,8 @@ public class CoinCardViewModel : ObservableObject
         _settings.LayerDiff.Opacity = DiffOpacity;
         _settings.LayerEtalonPhoto.Enabled = ShowEtalonPhoto;
         _settings.LayerEtalonPhoto.Opacity = EtalonPhotoOpacity;
+        _settings.LayerHeatmap.Enabled = ShowHeatmap;
+        _settings.LayerHeatmap.Opacity = HeatmapOpacity;
         _settings.Persist?.Invoke();
     }
 

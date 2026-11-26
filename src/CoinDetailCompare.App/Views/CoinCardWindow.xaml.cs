@@ -53,17 +53,17 @@ public partial class CoinCardWindow : Window
         btn.Background = b;
     }
 
-    // ---- manual etalon photo: drag = rotate around center, wheel = zoom ----
-    private double _dragStartAngle;
-    private double _dragAngle0;
+    // ---- manual etalon photo: drag = shift along X/Y (±100 px), wheel = zoom ----
+    private Point _dragStartPos;
+    private double _dragOffsetX0;
+    private double _dragOffsetY0;
 
     private void OnEtalonPhotoMouseDown(object sender, MouseButtonEventArgs e)
     {
         if (sender is not Image img || _vm.EtalonPhotoImage is null) return;
-        var p = e.GetPosition(img);
-        var center = new Point(img.ActualWidth / 2, img.ActualHeight / 2);
-        _dragStartAngle = AngleDeg(p, center);
-        _dragAngle0 = _vm.EtalonPhotoAngle;
+        _dragStartPos = e.GetPosition(img);
+        _dragOffsetX0 = _vm.EtalonPhotoOffsetX;
+        _dragOffsetY0 = _vm.EtalonPhotoOffsetY;
         img.CaptureMouse();
     }
 
@@ -71,8 +71,9 @@ public partial class CoinCardWindow : Window
     {
         if (e.LeftButton != MouseButtonState.Pressed || sender is not Image img) return;
         var p = e.GetPosition(img);
-        var center = new Point(img.ActualWidth / 2, img.ActualHeight / 2);
-        _vm.EtalonPhotoAngle = Normalize(_dragAngle0 + (AngleDeg(p, center) - _dragStartAngle));
+        // The VM clamps both axes to -100..100 px (base 0,0).
+        _vm.EtalonPhotoOffsetX = _dragOffsetX0 + (p.X - _dragStartPos.X);
+        _vm.EtalonPhotoOffsetY = _dragOffsetY0 + (p.Y - _dragStartPos.Y);
     }
 
     private void OnEtalonPhotoMouseUp(object sender, MouseButtonEventArgs e)
@@ -87,17 +88,5 @@ public partial class CoinCardWindow : Window
         // 80–120% range (base 100 ±20%): fine 2% steps so the wheel is usable.
         var factor = e.Delta > 0 ? 1.02 : 1.0 / 1.02;
         _vm.EtalonPhotoScale = Math.Clamp(_vm.EtalonPhotoScale * factor, 0.8, 1.2);
-    }
-
-    private static double AngleDeg(Point p, Point center)
-        => Math.Atan2(p.Y - center.Y, p.X - center.X) * 180.0 / Math.PI;
-
-    private static double Normalize(double a)
-    {
-        // Angle range is -180..180 (base 0).
-        a %= 360;
-        if (a > 180) a -= 360;
-        else if (a <= -180) a += 360;
-        return a;
     }
 }

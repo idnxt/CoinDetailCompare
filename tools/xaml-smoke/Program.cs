@@ -112,12 +112,28 @@ internal static class Program
                 coinCard.UpdateLayout();
                 var angleBoxText = (System.Windows.Controls.TextBox)angleBox.FindName("TextBox");
                 Console.WriteLine($"after arrow: vm=({vm.EtalonPhotoScale}, {vm.EtalonPhotoAngle}) transform=({st.ScaleX}, {rt.Angle}) angleBox={angleBoxText.Text}");
-                // the diff layer must follow the etalon photo's rotation/zoom
+                // XY pan: slider + 0.01-precision box drive the TranslateTransform
+                // (mouse-drag rotation was replaced by XY shifting, base 0, ±100 px)
+                var xSlider = (System.Windows.Controls.Slider)coinCard.FindName("EtalonPhotoXSlider");
+                var ySlider = (System.Windows.Controls.Slider)coinCard.FindName("EtalonPhotoYSlider");
+                var trans = (System.Windows.Media.TranslateTransform)tg.Children[2];
+                double x0 = xSlider.Value, y0 = ySlider.Value;
+                xSlider.Value = x0 + 25; // e.g. 0 -> 25 (range -100..100)
+                ySlider.Value = y0 - 15; // e.g. 0 -> -15
+                coinCard.UpdateLayout();
+                var xBox = (CoinDetailCompare.App.Controls.NumericUpDown)coinCard.FindName("XBox");
+                var xBoxText = (System.Windows.Controls.TextBox)xBox.FindName("TextBox");
+                xBoxText.Text = "30.00";
+                xBox.CommitEdit(); // same path as Enter / LostFocus
+                coinCard.UpdateLayout();
+                Console.WriteLine($"after XY: slider=({xSlider.Value}, {ySlider.Value}) vm=({vm.EtalonPhotoOffsetX}, {vm.EtalonPhotoOffsetY}) translate=({trans.X}, {trans.Y}) xBox={xBoxText.Text}");
+                // the diff layer must follow the etalon photo's zoom/rotation/shift
                 var diffOverlay = (System.Windows.Controls.Image)coinCard.FindName("DiffOverlay");
                 var dtg = (System.Windows.Media.TransformGroup)diffOverlay.RenderTransform;
                 var dst = (System.Windows.Media.ScaleTransform)dtg.Children[0];
                 var drot = (System.Windows.Media.RotateTransform)dtg.Children[1];
-                Console.WriteLine($"diff overlay: loaded={diffOverlay.Source != null} transform=({dst.ScaleX}, {drot.Angle}) etalon=({st.ScaleX}, {rt.Angle}) inSync={(dst.ScaleX == st.ScaleX && drot.Angle == rt.Angle)}");
+                var dtrans = (System.Windows.Media.TranslateTransform)dtg.Children[2];
+                Console.WriteLine($"diff overlay: loaded={diffOverlay.Source != null} translate=({dtrans.X}, {dtrans.Y}) etalon=({trans.X}, {trans.Y}) inSync={(dst.ScaleX == st.ScaleX && drot.Angle == rt.Angle && dtrans.X == trans.X && dtrans.Y == trans.Y)}");
                 Console.WriteLine($"vm.DiffImage={(vm.DiffImage != null)} status={vm.Status}");
                 Console.WriteLine("step: find similar + preview + pick etalon");
                 void WaitIdle()
@@ -148,9 +164,26 @@ internal static class Program
                     System.Windows.Threading.Dispatcher.PushFrame(frame);
                 }
                 int origEtalon = vm.EtalonId ?? -1;
+                // Wait on the concrete observable (candidates populated), not IsBusy:
+                // the fire-and-forget command makes IsBusy unreliable here.
+                void WaitCandidates()
+                {
+                    var frame = new System.Windows.Threading.DispatcherFrame();
+                    var sw = System.Diagnostics.Stopwatch.StartNew();
+                    var waitT = new System.Windows.Threading.DispatcherTimer
+                    { Interval = TimeSpan.FromMilliseconds(200) };
+                    waitT.Tick += (s, e) =>
+                    {
+                        if (vm.SimilarCandidates.Count > 0 || sw.Elapsed > TimeSpan.FromSeconds(60)) { waitT.Stop(); frame.Continue = false; }
+                    };
+                    waitT.Start();
+                    System.Windows.Threading.Dispatcher.PushFrame(frame);
+                }
+                Console.WriteLine($"before find-similar: IsBusy={vm.IsBusy} canExec={vm.FindSimilarCommand.CanExecute(null)} status={vm.Status}");
                 vm.FindSimilarCommand.Execute(null);
-                WaitIdle();
-                Console.WriteLine($"similar: count={vm.SimilarCandidates.Count} status={vm.Status}");
+                Console.WriteLine($"just after execute: IsBusy={vm.IsBusy}");
+                WaitCandidates();
+                Console.WriteLine($"similar: count={vm.SimilarCandidates.Count} IsBusy={vm.IsBusy} status={vm.Status}");
                 if (vm.SimilarCandidates.Count > 0)
                 {
                     foreach (var cand in vm.SimilarCandidates) Console.WriteLine("  cand: " + cand);
