@@ -16,6 +16,14 @@ public class CatalogTreeNode
     /// <summary>Set on leaf coin nodes; double-click opens the card.</summary>
     public int? CoinId { get; set; }
 
+    /// <summary>Stable identity of the node (same across rebuilds), used to
+    /// restore the expansion state after RefreshCatalogTree.</summary>
+    public string Key { get; set; } = "";
+
+    /// <summary>Two-way bound to TreeViewItem.IsExpanded; a refresh keeps
+    /// the branches the user had opened.</summary>
+    public bool IsExpanded { get; set; }
+
     /// <summary>Locked (disabled) branch, e.g. "Страны" for now.</summary>
     public bool IsLocked { get; set; }
 

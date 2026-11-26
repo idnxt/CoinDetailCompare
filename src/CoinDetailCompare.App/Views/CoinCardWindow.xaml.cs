@@ -103,8 +103,8 @@ public partial class CoinCardWindow : Window
     private void OnEtalonPhotoWheel(object sender, MouseWheelEventArgs e)
     {
         if (_vm.EtalonPhotoImage is null) return;
-        // 80–120% range (base 100 ±20%): fine 2% steps so the wheel is usable.
-        var factor = e.Delta > 0 ? 1.02 : 1.0 / 1.02;
+        // 80–120% range (base 100 ±20%): fine 0.2% steps so the wheel is gentle.
+        var factor = e.Delta > 0 ? 1.002 : 1.0 / 1.002;
         _vm.EtalonPhotoScale = Math.Clamp(_vm.EtalonPhotoScale * factor, 0.8, 1.2);
     }
 }

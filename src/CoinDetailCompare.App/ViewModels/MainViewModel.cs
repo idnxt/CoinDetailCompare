@@ -947,8 +947,14 @@ public class MainViewModel : ObservableObject
     {
         try
         {
+            // remember which branches the user had expanded (by stable key)
+            // so a rebuild keeps them open instead of collapsing the tree
+            var oldExpanded = new HashSet<string>(System.StringComparer.Ordinal);
+            foreach (var node in CatalogTreeRoots)
+                CollectExpanded(node, oldExpanded);
+
             var coins = _db.ListAllCoins();
-            var albums = new CatalogTreeNode { Title = T("catalog.albums") };
+            var albums = new CatalogTreeNode { Title = T("catalog.albums"), Key = "A" };
             var albumNames = coins
                 .Select(c => string.IsNullOrWhiteSpace(c.AlbumName) ? "" : c.AlbumName!)
                 .Distinct()
@@ -959,21 +965,27 @@ public class MainViewModel : ObservableObject
                     (string.IsNullOrWhiteSpace(c.AlbumName) ? "" : c.AlbumName!) == album);
                 var albumNode = new CatalogTreeNode
                 {
-                    Title = album == "" ? T("catalog.no_album") : string.Format(T("catalog.album"), album)
+                    Title = album == "" ? T("catalog.no_album") : string.Format(T("catalog.album"), album),
+                    Key = $"A>{album}"
                 };
                 var pages = inAlbum.Select(c => c.PageNo ?? 0).Distinct().OrderBy(p => p);
                 foreach (var page in pages)
                 {
                     var pageNode = new CatalogTreeNode
                     {
-                        Title = page == 0 ? T("catalog.no_page") : string.Format(T("catalog.page"), page)
+                        Title = page == 0 ? T("catalog.no_page") : string.Format(T("catalog.page"), page),
+                        Key = $"A>{album}>P{page}"
                     };
                     var onPage = inAlbum
                         .Where(c => (c.PageNo ?? 0) == page)
                         .OrderBy(c => c.OrderNo ?? 0)
                         .ThenBy(c => c.Id);
                     foreach (var coin in onPage)
-                        pageNode.Children.Add(BuildCoinTreeNode(coin));
+                    {
+                        var coinNode = BuildCoinTreeNode(coin);
+                        coinNode.Key = $"A>{album}>P{page}>C{coin.Id}";
+                        pageNode.Children.Add(coinNode);
+                    }
                     albumNode.Children.Add(pageNode);
                 }
                 albums.Children.Add(albumNode);
@@ -981,14 +993,32 @@ public class MainViewModel : ObservableObject
             var countries = new CatalogTreeNode
             {
                 Title = T("catalog.countries"),
-                IsLocked = true
+                IsLocked = true,
+                Key = "C"
             };
+            // put the expansion state back onto the freshly built nodes
+            foreach (var root in new[] { albums, countries })
+                RestoreExpanded(root, oldExpanded);
             CatalogTreeRoots = new ObservableCollection<CatalogTreeNode> { albums, countries };
         }
         catch (System.Exception ex)
         {
             Status = $"{T("status.error")}: {ex.Message}";
         }
+    }
+
+    /// <summary>Recursively collect the keys of all expanded nodes.</summary>
+    private static void CollectExpanded(CatalogTreeNode node, HashSet<string> expanded)
+    {
+        if (node.IsExpanded) expanded.Add(node.Key);
+        foreach (var child in node.Children) CollectExpanded(child, expanded);
+    }
+
+    /// <summary>Recursively restore IsExpanded from a captured key set.</summary>
+    private static void RestoreExpanded(CatalogTreeNode node, HashSet<string> expanded)
+    {
+        node.IsExpanded = expanded.Contains(node.Key);
+        foreach (var child in node.Children) RestoreExpanded(child, expanded);
     }
 
     /// <summary>Leaf coin node: "номер, вид, наименование, год".</summary>

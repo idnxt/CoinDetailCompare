@@ -110,6 +110,14 @@
                                 </TextBlock>
                             </HierarchicalDataTemplate>
                         </TreeView.Resources>
+                        <!-- keep the branches the user opened across RefreshCatalogTree:
+                             TreeViewItem.IsExpanded <-> node.IsExpanded (stable node Key) -->
+                        <TreeView.ItemContainerStyle>
+                            <Style TargetType="TreeViewItem">
+                                <Setter Property="IsExpanded"
+                                        Value="{Binding IsExpanded, Mode=TwoWay}" />
+                            </Style>
+                        </TreeView.ItemContainerStyle>
                         <TreeView.ItemTemplate>
                             <HierarchicalDataTemplate ItemTemplate="{StaticResource TreeT}"
                                                       DataType="{x:Type vm:CatalogTreeNode}"

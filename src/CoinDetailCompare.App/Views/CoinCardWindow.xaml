@@ -72,11 +72,12 @@
                     <StackPanel Grid.Row="2" Grid.Column="0" Orientation="Horizontal" Margin="0,0,8,0">
                         <TextBlock Text="{Binding CardAngle, Source={StaticResource Strings}}"
                                    VerticalAlignment="Center" Margin="0,0,4,0" />
-                        <Slider x:Name="EtalonPhotoAngleSlider" Width="56" Minimum="-180" Maximum="180"
+                        <!-- slider: fine ±15° range; the numeric box accepts any angle -->
+                        <Slider x:Name="EtalonPhotoAngleSlider" Width="56" Minimum="-15" Maximum="15"
                                 Value="{Binding EtalonPhotoAngle}" VerticalAlignment="Center" />
                         <controls:NumericUpDown x:Name="AngleBox" Width="68" Margin="3,0,0,0"
                                                 Value="{Binding EtalonPhotoAngle, Mode=TwoWay}"
-                                                Minimum="-180" Maximum="180" Step="0.01"
+                                                Step="0.01"
                                                 VerticalAlignment="Center" />
                     </StackPanel>
                     <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="0,0,8,0">
@@ -108,8 +109,10 @@
                     </StackPanel>
                 </Grid>
 
-                <!-- base photo + overlays -->
-                <Grid>
+                <!-- base photo + overlays; ClipToBounds keeps the zoomed/shifted
+                     etalon layer inside the photo area instead of painting over
+                     the hint and buttons below -->
+                <Grid ClipToBounds="True">
                     <Image Source="{Binding BaseImage}" Stretch="Uniform" />
                     <Image Source="{Binding HeatmapImage}" Stretch="Uniform"
                            Opacity="{Binding HeatmapOpacity, Converter={StaticResource Opacity01}}"

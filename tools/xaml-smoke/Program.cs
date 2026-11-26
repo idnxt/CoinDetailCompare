@@ -247,6 +247,24 @@ internal static class Program
                 Check(itemDel.CommandParameter is CatalogTreeNode delNode && delNode.CoinId == coinId,
                     "menu delete item carries the coin node");
                 row.ContextMenu = null;
+                // a refresh must keep the branches the user had opened
+                // (albums -> album -> page were expanded above)
+                mvm.RefreshCatalogTree();
+                PumpFrames();
+                var rootItem3 = (System.Windows.Controls.TreeViewItem)tree.ItemContainerGenerator.ContainerFromIndex(0);
+                rootItem3.UpdateLayout();
+                PumpFrames();
+                var albumItem3 = (System.Windows.Controls.TreeViewItem)rootItem3.ItemContainerGenerator.ContainerFromIndex(0);
+                albumItem3.UpdateLayout();
+                PumpFrames();
+                var pageItem3 = (System.Windows.Controls.TreeViewItem)albumItem3.ItemContainerGenerator.ContainerFromIndex(0);
+                pageItem3.UpdateLayout();
+                PumpFrames();
+                Check(rootItem3.IsExpanded && albumItem3.IsExpanded && pageItem3.IsExpanded,
+                    "refresh kept all opened branches expanded (albums -> album -> page)");
+                Check(pageItem3.ItemContainerGenerator.ContainerFromIndex(0) is System.Windows.Controls.TreeViewItem,
+                    "refreshed page item still has its coin rows");
+                Console.WriteLine("tree refresh: opened branches preserved");
                 // the old left-block buttons are gone; the same functionality is
                 // reachable via the right-click menu on "Open capture window"
                 var camBtn = FindButtonWithContextMenu(main);
