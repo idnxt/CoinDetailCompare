@@ -75,6 +75,42 @@ class Storage:
             con.commit()
         return new_id
 
+    # ---- coin deletion ----
+    def coin_files(self, coin_id: int) -> list[Path]:
+        """Every per-coin file that may exist on disk (both sides)."""
+        paths = []
+        for side in SIDES:
+            paths += [
+                self.photo_path(coin_id, side),
+                self.vector_path(coin_id, side),
+                self.heatmap_image_path(coin_id, side),
+                self.heatmap_matrix_path(coin_id, side),
+                self.normalized_path(coin_id, side),
+                self.layer_path(coin_id, side),
+                self.cfg.coimg_dir / f"{coin_id}_{side}_diff.png",
+            ]
+        return paths
+
+    def delete_coin(self, coin_id: int) -> dict:
+        """Delete the coin row and all of its files.
+
+        Coins that pointed at this coin as their etalon (duplicates/
+        variants/anomalies) are detached: etalon_id -> NULL, so they stay
+        in the catalog as ordinary coins. Returns the delete summary."""
+        with sqlite3.connect(self.cfg.db_path) as con:
+            cur = con.execute("UPDATE coin SET etalon_id = NULL WHERE etalon_id = ?", (coin_id,))
+            detached = cur.rowcount
+            con.execute("DELETE FROM coin WHERE id = ?", (coin_id,))
+            con.commit()
+        removed = 0
+        for path in self.coin_files(coin_id):
+            try:
+                path.unlink()
+                removed += 1
+            except FileNotFoundError:
+                pass
+        return {"detached": detached, "files_removed": removed}
+
     # ---- paths ----
     def photo_path(self, coin_id: int, side: str) -> Path:
         return self.cfg.coimg_dir / f"{coin_id}_{side}.png"

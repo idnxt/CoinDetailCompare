@@ -120,7 +120,9 @@
     "backend_down": "Backend unavailable",
     "saved": "Coin saved",
     "error": "Error",
-    "language": "Language"
+    "language": "Language",
+    "coin_deleted": "Coin deleted",
+    "delete_failed": "coin was not deleted"
   },
   "catalog": {
     "title": "Coin catalog",
@@ -137,7 +139,11 @@
     "page": "Page {0}",
     "no_page": "(no page)",
     "countries": "Countries",
-    "tree_hint": "Double-click — edit the coin card"
+    "menu_open": "Open",
+    "menu_delete": "Delete",
+    "delete": "Delete coin",
+    "delete_confirm": "Delete coin '{0}'?\nPhotos, vector and files of the coin will be permanently removed.",
+    "tree_hint": "Double-click or Enter opens the card; right-click for the menu"
   },
   "kind": {
     "label": "Kind (E/D/A)",

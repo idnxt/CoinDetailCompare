@@ -130,6 +130,7 @@ public class MainViewModel : ObservableObject
         SaveAnnotationsCommand = new RelayCommand(async () => await SaveAnnotationsAsync());
         OpenCatalogCommand = new RelayCommand(OpenCatalog);
         EditCoinFromTreeCommand = new RelayCommand<CatalogTreeNode>(EditCoinFromTree);
+        DeleteCoinFromTreeCommand = new RelayCommand<CatalogTreeNode>(DeleteCoinFromTree);
         RefreshCatalogTree();
 
         _ = LoadReferencesAsync();
@@ -341,6 +342,7 @@ public class MainViewModel : ObservableObject
     public RelayCommand ApplyNumistaItemCommand { get; }
     public RelayCommand OpenCatalogCommand { get; }
     public RelayCommand<CatalogTreeNode> EditCoinFromTreeCommand { get; }
+    public RelayCommand<CatalogTreeNode> DeleteCoinFromTreeCommand { get; }
 
     public string T(string key) => _loc.T(key);
 
@@ -1013,6 +1015,29 @@ public class MainViewModel : ObservableObject
         win.Owner = owner is not null && owner.IsVisible ? owner : null;
         win.ShowDialog();
         RefreshCatalogTree();
+    }
+
+    /// <summary>Permanently delete a coin (right-click menu of the catalog
+    /// tree): confirmation -> backend deletes the row, files and vectors ->
+    /// the tree is rebuilt.</summary>
+    private async void DeleteCoinFromTree(CatalogTreeNode? node)
+    {
+        if (node is null || node.IsLocked || node.CoinId is not int coinId) return;
+        var result = System.Windows.MessageBox.Show(
+            string.Format(T("catalog.delete_confirm"), node.Title),
+            T("catalog.delete"),
+            System.Windows.MessageBoxButton.YesNo,
+            System.Windows.MessageBoxImage.Question);
+        if (result != System.Windows.MessageBoxResult.Yes) return;
+        if (await _backend.DeleteCoinAsync(coinId))
+        {
+            Status = T("status.coin_deleted");
+            RefreshCatalogTree();
+        }
+        else
+        {
+            Status = $"{T("status.error")}: {T("status.delete_failed")}";
+        }
     }
 
     /// <summary>Reload the photos (current + etalon) and heatmap for CompareSide.</summary>

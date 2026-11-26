@@ -406,6 +406,17 @@ def create_app() -> FastAPI:
             finally:
                 _release_gpu()
 
+    @app.delete("/coins/{coin_id}")
+    def delete_coin_endpoint(coin_id: int):
+        """Permanently delete a coin: DB row, files (photos, vectors, heatmaps,
+        layers, diff) and its FAISS index entries. Duplicates that pointed at
+        the coin are detached (etalon_id -> NULL)."""
+        if _coin_row(coin_id) is None:
+            raise HTTPException(status_code=404, detail="coin not found")
+        info = STORAGE.delete_coin(coin_id)
+        SEARCH.remove_coin(coin_id)
+        return {"ok": True, "coin_id": coin_id, **info}
+
     @app.get("/compare/image")
     def compare_image_endpoint(coin_id: int, etalon_coin_id: int, side: str):
         """Transparent diff layer between the coin and its etalon (one side):

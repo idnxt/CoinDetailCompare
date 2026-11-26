@@ -148,6 +148,8 @@ public class Strings : INotifyPropertyChanged
     public string StatusSaved => this["status.saved"];
     public string StatusError => this["status.error"];
     public string StatusLanguage => this["status.language"];
+    public string StatusCoinDeleted => this["status.coin_deleted"];
+    public string StatusDeleteFailed => this["status.delete_failed"];
 
     // catalog
     public string CatalogTitle => this["catalog.title"];
@@ -159,6 +161,10 @@ public class Strings : INotifyPropertyChanged
     public string CatalogYear => this["catalog.year"];
     public string CatalogEdit => this["catalog.edit"];
     public string CatalogTreeHint => this["catalog.tree_hint"];
+    public string CatalogMenuOpen => this["catalog.menu_open"];
+    public string CatalogMenuDelete => this["catalog.menu_delete"];
+    public string CatalogDelete => this["catalog.delete"];
+    public string CatalogDeleteConfirm => this["catalog.delete_confirm"];
 
     // kind
     public string KindLabel => this["kind.label"];

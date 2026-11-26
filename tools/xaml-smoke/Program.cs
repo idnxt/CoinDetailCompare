@@ -2,6 +2,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Media;
 using CoinDetailCompare.App;
+using CoinDetailCompare.App.Models;
 using CoinDetailCompare.App.Services;
 using CoinDetailCompare.App.ViewModels;
 
@@ -78,8 +79,13 @@ internal static class Program
         {
             Interval = TimeSpan.FromSeconds(15)
         };
-        timer.Tick += (s, e) =>
+        timer.Tick += async (s, e) =>
         {
+            // The handler is async: while it awaits, a later 15 s tick would
+            // start the whole suite in parallel (and later collide with
+            // app.Shutdown() on a window Show). Stop the timer up front so the
+            // suite runs exactly once.
+            timer.Stop();
             Console.WriteLine("Card settled.");
             try
             {
@@ -94,9 +100,6 @@ internal static class Program
                 var tree = (System.Windows.Controls.TreeView)main.FindName("CatalogTree");
                 tree.UpdateLayout();
                 Console.WriteLine($"catalog treeview: items={tree.Items.Count}");
-                // double-click wiring: the handler must be attached to each
-                // TreeViewItem (EventSetter), with the node coming from the
-                // item's DataContext — verify on the first coin row
                 // headless: child containers are generated lazily — pump the
                 // dispatcher between each expansion pass
                 void PumpFrames()
@@ -110,7 +113,13 @@ internal static class Program
                     p.Start();
                     System.Windows.Threading.Dispatcher.PushFrame(frame);
                 }
-                var albumItem = (System.Windows.Controls.TreeViewItem)tree.ItemContainerGenerator.ContainerFromIndex(0);
+                // tree layout: "Альбомы" (root) -> album -> page -> coin
+                var rootItem = (System.Windows.Controls.TreeViewItem)tree.ItemContainerGenerator.ContainerFromIndex(0);
+                rootItem.IsExpanded = true;
+                rootItem.UpdateLayout();
+                PumpFrames();
+                main.UpdateLayout();
+                var albumItem = (System.Windows.Controls.TreeViewItem)rootItem.ItemContainerGenerator.ContainerFromIndex(0);
                 albumItem.IsExpanded = true;
                 albumItem.UpdateLayout();
                 PumpFrames();
@@ -122,58 +131,160 @@ internal static class Program
                 main.UpdateLayout();
                 PumpFrames();
                 var coinItem = (System.Windows.Controls.TreeViewItem)pageItem.ItemContainerGenerator.ContainerFromIndex(0);
-                // the per-item EventSetter (MouseLeftButtonDown -> CatalogTreeItem_Click)
-                // must be present on the item container's style
-                bool HasEventSetter(System.Windows.Style s) =>
-                    s?.Setters != null && s.Setters.Cast<object>()
-                        .Any(x => x is System.Windows.EventSetter es
-                                 && es.Event?.Name == "MouseLeftButtonDown"
-                                 && es.Handler is System.Delegate d
-                                 && d.Method.Name == "CatalogTreeItem_Click");
-                // the per-item EventSetter must be on the ItemContainerStyle AND
-                // actually applied to a generated container (headless: the level-3
-                // coin container may not be generated yet, so check the deepest
-                // container that exists)
-                var container = coinItem ?? pageItem ?? albumItem;
-                bool styleOnContainer = container != null && HasEventSetter(container.Style);
-                bool handlerAttached = HasEventSetter(tree.ItemContainerStyle) && styleOnContainer;
-                bool dblClickWired = handlerAttached && firstCoin?.CoinId is not null;
-                Console.WriteLine($"tree dblclick wiring: deepestContainer={(container?.GetType().Name)} containerEventSetter={styleOnContainer} itemStyleOk={handlerAttached} firstCoinId={firstCoin?.CoinId} ok={dblClickWired}");
+                // Double-click / Enter / right-click on a coin row are wired on the
+                // TreeView itself via tunneling Preview* handlers; the node is
+                // resolved from the event's OriginalSource (the row's TextBlock)
+                // through the visual tree. (The old per-item EventSetter resolved
+                // to UIElement.MouseLeftButtonDownEvent, a Direct-strategy legacy
+                // event that never fired for clicks on the row's TextBlock.)
+                int coinId = firstCoin?.CoinId ?? 0;
+                for (int t = 0; coinItem is null && t < 8; t++)
+                {
+                    PumpFrames();
+                    pageItem.UpdateLayout();
+                    coinItem = (System.Windows.Controls.TreeViewItem)pageItem.ItemContainerGenerator.ContainerFromIndex(0);
+                }
+                var row = coinItem ?? FindCoinRow(main, coinId);
+                Check(row is not null, "coin row container is realized in the tree");
+                var rowText = FindTextBlock(row!);
+                Check(rowText is not null, "coin row's TextBlock found");
+                Check(row!.DataContext is CatalogTreeNode rowNode && rowNode.CoinId == coinId,
+                    "row's DataContext is the coin node");
+                // Neither mouse nor key events can be synthesized through the
+                // public API (MouseDevice/KeyboardDevice ctors are internal,
+                // ClickCount's setter is internal), so uninitialized event args
+                // are created and their fields (_count, _key, _originalSource)
+                // set via reflection — the handlers only read those.
+                System.Windows.Input.MouseButtonEventArgs MouseArgs(DependencyObject src, int clicks, RoutedEvent ev)
+                {
+                    var a = (System.Windows.Input.MouseButtonEventArgs)
+                        System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(
+                            typeof(System.Windows.Input.MouseButtonEventArgs));
+                    SetWpfField(a, "_count", clicks);
+                    SetWpfField(a, "_routedEvent", ev); // required by e.Handled = true
+                    SetWpfField(a, "_originalSource", src);
+                    return a;
+                }
+                void RunTreeHandler(string name, RoutedEventArgs args)
+                {
+                    var m = typeof(MainWindow).GetMethod(name,
+                        System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                        ?? throw new Exception("handler not found: " + name);
+                    m.Invoke(main, new object[] { main, args });
+                }
+                // EditCoinFromTree opens the card with ShowDialog (modal); a timer
+                // closes it so the headless test can continue
+                var closer = new System.Windows.Threading.DispatcherTimer
+                {
+                    Interval = TimeSpan.FromSeconds(5)
+                };
+                closer.Tick += (s, e) =>
+                {
+                    foreach (var w in Application.Current.Windows)
+                    {
+                        if (w is System.Windows.Window win
+                            && win.GetType() == typeof(CoinDetailCompare.App.Views.CoinCardWindow)
+                            && win != coinCard && win.IsVisible)
+                            win.Close();
+                    }
+                };
+                // 1) double-click on the row's TextBlock -> the card opens
+                closer.Start();
+                RunTreeHandler("CatalogTree_PreviewMouseLeftButtonDown",
+                    MouseArgs(rowText, 2, System.Windows.UIElement.PreviewMouseLeftButtonDownEvent));
+                closer.Stop();
+                Console.WriteLine($"tree double-click (handler): card opened and closed; roots={mvm.CatalogTreeRoots.Count}");
+                // 2) Enter on the focused row (OriginalSource = the row itself)
+                closer.Start();
+                var enter = (System.Windows.Input.KeyEventArgs)
+                    System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(
+                        typeof(System.Windows.Input.KeyEventArgs));
+                SetWpfField(enter, "_key", System.Windows.Input.Key.Enter);
+                SetWpfField(enter, "_routedEvent", System.Windows.UIElement.PreviewKeyDownEvent);
+                SetWpfField(enter, "_originalSource", row!);
+                RunTreeHandler("CatalogTree_PreviewKeyDown", enter);
+                closer.Stop();
+                Console.WriteLine("tree Enter (handler): card opened and closed");
+                // 3) right-click on the row -> 2-item context menu (Open / Delete).
+                // Closing the card triggers a fire-and-forget tree refresh: the
+                // tree is rebuilt with fresh nodes and collapsed containers, so
+                // re-expand root -> album -> page and re-find the coin row.
+                PumpFrames();
+                PumpFrames();
+                var rootItem2 = (System.Windows.Controls.TreeViewItem)tree.ItemContainerGenerator.ContainerFromIndex(0);
+                rootItem2.IsExpanded = true;
+                rootItem2.UpdateLayout();
+                PumpFrames();
+                var albumItem2 = (System.Windows.Controls.TreeViewItem)rootItem2.ItemContainerGenerator.ContainerFromIndex(0);
+                albumItem2.IsExpanded = true;
+                albumItem2.UpdateLayout();
+                PumpFrames();
+                var pageItem2 = (System.Windows.Controls.TreeViewItem)albumItem2.ItemContainerGenerator.ContainerFromIndex(0);
+                pageItem2.IsExpanded = true;
+                pageItem2.UpdateLayout();
+                PumpFrames();
+                main.UpdateLayout();
+                row = null;
+                for (int t = 0; row is null && t < 8; t++)
+                {
+                    PumpFrames();
+                    row = (System.Windows.Controls.TreeViewItem)pageItem2.ItemContainerGenerator.ContainerFromIndex(0)
+                          ?? FindCoinRow(main, coinId);
+                }
+                Check(row is not null, "coin row present after refresh");
+                Check(row!.DataContext is CatalogTreeNode rowNode2 && rowNode2.CoinId == coinId,
+                    "refreshed row's DataContext is the coin node");
+                rowText = FindTextBlock(row!);
+                Check(rowText is not null, "refreshed row's TextBlock found");
+                RunTreeHandler("CatalogTree_PreviewMouseRightButtonDown",
+                    MouseArgs(rowText, 1, System.Windows.UIElement.PreviewMouseRightButtonDownEvent));
+                var ctx = row!.ContextMenu;
+                Check(ctx is not null && ctx.Items.Count == 2, "right-click attached a 2-item context menu");
+                var itemOpen = (System.Windows.Controls.MenuItem)ctx!.Items[0];
+                var itemDel = (System.Windows.Controls.MenuItem)ctx.Items[1];
+                Check(itemOpen.Command == mvm.EditCoinFromTreeCommand, "menu item 1: open -> EditCoinFromTreeCommand");
+                Check(itemDel.Command == mvm.DeleteCoinFromTreeCommand, "menu item 2: delete -> DeleteCoinFromTreeCommand");
+                Check(itemDel.CommandParameter is CatalogTreeNode delNode && delNode.CoinId == coinId,
+                    "menu delete item carries the coin node");
+                row.ContextMenu = null;
                 // the old left-block buttons are gone; the same functionality is
                 // reachable via the right-click menu on "Open capture window"
                 var camBtn = FindButtonWithContextMenu(main);
                 Console.WriteLine($"capture ctxmenu: found={camBtn != null} items={camBtn?.ContextMenu.Items.Count}");
                 Console.WriteLine($"load cmds alive: obverse={mvm.LoadObverseFileCommand.CanExecute(null)} reverse={mvm.LoadReverseFileCommand.CanExecute(null)} swap={mvm.SwapSidesCommand.CanExecute(null)}");
-                // double-click a coin row: the card opens; a timer closes it so
-                // the headless test can continue (ShowDialog blocks the stack)
-                if (firstCoin != null)
+                // DELETE /coins/{id} end-to-end: a freshly created coin row plus
+                // its files are removed through the backend endpoint (DB row,
+                // photo/vector/heatmap files, FAISS entries)
+                var delId = db.NextCoinId();
+                db.SaveCoin(new Coin
                 {
-                    var closer = new System.Windows.Threading.DispatcherTimer
-                    {
-                        Interval = TimeSpan.FromSeconds(5)
-                    };
-                    closer.Tick += (s, e) =>
-                    {
-                        foreach (var w in Application.Current.Windows)
-                        {
-                            if (w is System.Windows.Window win
-                                && win.GetType() == typeof(CoinDetailCompare.App.Views.CoinCardWindow)
-                                && win != coinCard && win.IsVisible)
-                                win.Close();
-                        }
-                    };
-                    closer.Start();
-                    // the double-click handler (ClickCount >= 2 on the TreeView)
-                    // resolves the selected node and calls this command; the
-                    // mouse event itself can't be faked (MouseDevice is abstract),
-                    // so drive the same chain directly
-                    mvm.EditCoinFromTreeCommand.Execute(firstCoin);
-                    closer.Stop();
-                    Console.WriteLine($"tree double-click: card opened and closed; tree roots after refresh={mvm.CatalogTreeRoots.Count}");
-                }
+                    Id = delId,
+                    MintYear = "2027",
+                    AlbumName = "SmokeDel",
+                    PageNo = 1,
+                    OrderNo = 77,
+                });
+                File.WriteAllBytes($@"E:\CoinDetailCompare\coimg\{delId}_obverse.png",
+                    new byte[] { 0x89, 0x50, 0x4E, 0x47 });
+                File.WriteAllBytes($@"E:\CoinDetailCompare\coimg\{delId}_obverse.npy",
+                    new byte[] { 0x94, 0x2D, 0x4E, 0x55, 0x4D, 0x50, 0x59 });
+                File.WriteAllBytes($@"E:\CoinDetailCompare\coimg\{delId}_obverse_heatmap.png",
+                    new byte[] { 0x89, 0x50, 0x4E, 0x47 });
+                var delHttp = new System.Net.Http.HttpClient { BaseAddress = new Uri(settings.BackendBaseUrl) };
+                var delResp = await delHttp.DeleteAsync($"/coins/{delId}");
+                Check(delResp.StatusCode == System.Net.HttpStatusCode.OK,
+                    $"DELETE /coins/{delId} -> 200 (got {(int)delResp.StatusCode} {delResp.ReasonPhrase})");
+                Check(db.GetCoin(delId) is null, "deleted coin row is gone from the DB");
+                Check(!File.Exists($@"E:\CoinDetailCompare\coimg\{delId}_obverse.png"), "deleted coin's photo removed");
+                Check(!File.Exists($@"E:\CoinDetailCompare\coimg\{delId}_obverse.npy"), "deleted coin's vector removed");
+                Check(!File.Exists($@"E:\CoinDetailCompare\coimg\{delId}_obverse_heatmap.png"), "deleted coin's heatmap removed");
+                var delAgain = await delHttp.DeleteAsync($"/coins/{delId}");
+                Check(delAgain.StatusCode == System.Net.HttpStatusCode.NotFound, "second DELETE -> 404");
+                Console.WriteLine($"tree delete: coin {delId} removed (row, files, vectors)");
                 Console.WriteLine("step: show card");
                 coinCard.Show();
                 coinCard.UpdateLayout();
+                Console.WriteLine($"diag card: IsVisible={coinCard.IsVisible}");
                 Console.WriteLine("step: scale/angle slider test");
                 var overlay = (System.Windows.Controls.Image)coinCard.FindName("EtalonPhotoOverlay");
                 var tg = (System.Windows.Media.TransformGroup)overlay.RenderTransform;
@@ -340,6 +451,9 @@ internal static class Program
                         Console.WriteLine($"orig etalon {origEtalon} not in candidate list - pick test skipped");
                     }
                 }
+                // Ensure the card's hwnd exists before setting it as owner
+                // (Window.Owner throws if the owner window has no hwnd yet).
+                new System.Windows.Interop.WindowInteropHelper(coinCard).EnsureHandle();
                 Console.WriteLine("step: create picker");
                 var picker = new CoinDetailCompare.App.Views.ColorPickerWindow(
                     System.Windows.Media.Color.FromRgb(0x00, 0xE5, 0xFF)) { Owner = coinCard };
@@ -367,12 +481,69 @@ internal static class Program
                 var result = picker.ShowDialog();
                 Console.WriteLine("Picker result=" + result + " color=" + picker.PickedColor);
             }
-            catch (System.Exception ex) { Console.WriteLine("CARD PICK ERROR: " + ex); }
+            catch (System.Exception ex) { Console.WriteLine("SMOKE-FAIL: " + ex); Environment.Exit(3); }
+            // The timer fires every 15 s and the scenario takes longer than that:
+            // stop it so the suite runs exactly once (a re-run would collide
+            // with app.Shutdown() and fail on main.Show()).
+            timer.Stop();
             app.Shutdown();
         };
         timer.Start();
         app.Run();
         return 0;
+    }
+
+    /// <summary>Fail the smoke run with a distinct exit code.</summary>
+    static void Check(bool cond, string msg)
+    {
+        if (!cond)
+        {
+            Console.WriteLine("SMOKE-FAIL: " + msg);
+            Environment.Exit(3);
+        }
+    }
+
+    /// <summary>First TreeViewItem in the visual tree whose DataContext is a
+    /// catalog node with the given coin id.</summary>
+    static System.Windows.Controls.TreeViewItem? FindCoinRow(DependencyObject root, int coinId)
+    {
+        int n = System.Windows.Media.VisualTreeHelper.GetChildrenCount(root);
+        for (int i = 0; i < n; i++)
+        {
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(root, i);
+            if (child is System.Windows.Controls.TreeViewItem tv
+                && tv.DataContext is CatalogTreeNode cn && cn.CoinId == coinId)
+                return tv;
+            var found = FindCoinRow(child, coinId);
+            if (found is not null) return found;
+        }
+        return null;
+    }
+
+    /// <summary>First TextBlock in the visual tree under `root`.</summary>
+    static System.Windows.Controls.TextBlock? FindTextBlock(DependencyObject root)
+    {
+        int n = System.Windows.Media.VisualTreeHelper.GetChildrenCount(root);
+        for (int i = 0; i < n; i++)
+        {
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(root, i);
+            if (child is System.Windows.Controls.TextBlock tb) return tb;
+            var found = FindTextBlock(child);
+            if (found is not null) return found;
+        }
+        return null;
+    }
+
+    /// <summary>Set a private WPF field (walking base types): used to synthesize
+    /// mouse/keyboard event args the public API cannot construct.</summary>
+    static void SetWpfField(object o, string name, object value)
+    {
+        for (Type t = o.GetType(); t is not null; t = t.BaseType)
+        {
+            var f = t.GetField(name, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            if (f is not null) { f.SetValue(o, value); return; }
+        }
+        throw new Exception("reflection field not found: " + name);
     }
 
     /// <summary>First button in the visual tree that has a context menu.</summary>

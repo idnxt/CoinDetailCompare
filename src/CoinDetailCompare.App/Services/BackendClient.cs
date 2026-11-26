@@ -66,6 +66,21 @@ public class BackendClient
     public async Task<Dictionary<string, int>?> RebuildIndexAsync()
         => await ContinueAsync<Dictionary<string, int>>(_http.PostAsync("/index/rebuild", null));
 
+    /// <summary>Permanently delete a coin: DB row, files, FAISS vectors.
+    /// Returns false when the backend is unreachable or the coin is unknown.</summary>
+    public async Task<bool> DeleteCoinAsync(int coinId)
+    {
+        try
+        {
+            var resp = await _http.DeleteAsync($"/coins/{coinId}");
+            return resp.IsSuccessStatusCode;
+        }
+        catch (System.Net.Http.HttpRequestException)
+        {
+            return false;
+        }
+    }
+
     public async Task<NumistaParseResponse?> ParseNumistaLinkAsync(string link, bool fetchMeta = false)
         => await ContinueAsync<NumistaParseResponse>(_http.PostAsJsonAsync("/numista/parse", new { link, fetch_meta = fetchMeta }, Opts));
 

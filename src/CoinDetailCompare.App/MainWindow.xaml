@@ -79,18 +79,19 @@
                     <TextBlock Grid.Row="2" Style="{StaticResource Title}"
                                Text="{Binding CatalogTitle, Source={StaticResource Strings}}" />
 
+                    <!-- Double-click / Enter / right-click are wired on the
+                         TreeView itself via tunneling (Preview) events and
+                         resolve the node from the clicked TreeViewItem's
+                         DataContext: the legacy per-item EventSetter resolved
+                         to UIElement.MouseLeftButtonDownEvent (Direct
+                         strategy) and never fired for clicks on the row's
+                         TextBlock. -->
                     <TreeView Grid.Row="3" x:Name="CatalogTree"
                               ItemsSource="{Binding CatalogTreeRoots}"
-                              Margin="0,6,0,0">
-                        <!-- Double-click is wired per item (EventSetter), reading
-                             the node from the item itself instead of
-                             TreeView.SelectedItem, whose selection state can
-                             lag behind the click. -->
-                        <TreeView.ItemContainerStyle>
-                            <Style TargetType="TreeViewItem">
-                                <EventSetter Event="MouseLeftButtonDown" Handler="CatalogTreeItem_Click" />
-                            </Style>
-                        </TreeView.ItemContainerStyle>
+                              Margin="0,6,0,0"
+                              PreviewMouseLeftButtonDown="CatalogTree_PreviewMouseLeftButtonDown"
+                              PreviewKeyDown="CatalogTree_PreviewKeyDown"
+                              PreviewMouseRightButtonDown="CatalogTree_PreviewMouseRightButtonDown">
                         <TreeView.Resources>
                             <HierarchicalDataTemplate x:Key="TreeT"
                                                       DataType="{x:Type vm:CatalogTreeNode}"

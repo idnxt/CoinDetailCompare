@@ -6,6 +6,8 @@ unavailable (local dev / CI).
 """
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 
 from .config import Config
@@ -89,6 +91,13 @@ class _Index:
         self.ids.pop(i)
         self.matrix = np.delete(self.matrix, i, axis=0)
         self._id_set.discard(coin_id)
+
+    def remove(self, coin_id: int) -> bool:
+        """Remove the vector for `coin_id`. Returns True if it was present."""
+        if coin_id not in self._id_set:
+            return False
+        self._remove(coin_id)
+        return True
 
     def search(self, vec: np.ndarray, topk: int = 10):
         """Return [(coin_id, cosine_score), ...] best first."""
@@ -181,6 +190,13 @@ class SearchEngine:
         idx = self.obverse if side == "obverse" else self.reverse
         idx.add(coin_id, vec)
 
+    def remove_coin(self, coin_id: int) -> bool:
+        """Drop a coin's vectors from both side indexes; persist when changed."""
+        changed = self.obverse.remove(coin_id) or self.reverse.remove(coin_id)
+        if changed:
+            self.persist()
+        return changed
+
     def persist(self) -> None:
         paths = self.storage.index_files()
         self.obverse.save(str(paths[0]))
@@ -194,7 +210,14 @@ class SearchEngine:
         for side in _SIDES:
             idx = self.obverse if side == "obverse" else self.reverse
             for coin_id, vpath in self.storage.iter_vectors(side):
-                vec = np.load(vpath)
+                try:
+                    vec = np.load(vpath)
+                except ValueError as exc:
+                    # Corrupt/truncated .npy (partial write) - skip it instead of
+                    # taking the whole index down; the coin can be re-embedded.
+                    logging.getLogger(__name__).warning(
+                        "skipping corrupt vector %s: %s", vpath, exc)
+                    continue
                 if vec.shape[0] != self.cfg.embedding_dim:
                     continue  # dim mismatch (model change) - skip, will re-embed
                 idx.add(coin_id, vec)
