@@ -61,16 +61,21 @@ public partial class CoinCardWindow : Window
     private void OnEtalonPhotoMouseDown(object sender, MouseButtonEventArgs e)
     {
         if (sender is not Image img || _vm.EtalonPhotoImage is null) return;
-        _dragStartPos = e.GetPosition(img);
+        // Measure in the WINDOW's coordinate space, not the image's own:
+        // the image's local space is shifted by its own TranslateTransform,
+        // so GetPosition(img) feeds the offset back into the next move
+        // event and the photo jitters (and chases the mouse at 0.5x).
+        _dragStartPos = e.GetPosition(this);
         _dragOffsetX0 = _vm.EtalonPhotoOffsetX;
         _dragOffsetY0 = _vm.EtalonPhotoOffsetY;
         img.CaptureMouse();
+        Keyboard.Focus(img); // arrows then move the photo by 1 px
     }
 
     private void OnEtalonPhotoMouseMove(object sender, MouseEventArgs e)
     {
         if (e.LeftButton != MouseButtonState.Pressed || sender is not Image img) return;
-        var p = e.GetPosition(img);
+        var p = e.GetPosition(this);
         // The VM clamps both axes to -100..100 px (base 0,0).
         _vm.EtalonPhotoOffsetX = _dragOffsetX0 + (p.X - _dragStartPos.X);
         _vm.EtalonPhotoOffsetY = _dragOffsetY0 + (p.Y - _dragStartPos.Y);
@@ -80,6 +85,19 @@ public partial class CoinCardWindow : Window
     {
         if (sender is Image img)
             img.ReleaseMouseCapture();
+    }
+
+    // ---- arrow keys: 1 px nudge once the photo is "active" (clicked) ----
+    private void OnEtalonPhotoKeyDown(object sender, KeyEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case Key.Left:  _vm.NudgeEtalonPhoto(-1, 0); e.Handled = true; break;
+            case Key.Right: _vm.NudgeEtalonPhoto(1, 0);  e.Handled = true; break;
+            case Key.Up:    _vm.NudgeEtalonPhoto(0, -1); e.Handled = true; break;
+            case Key.Down:  _vm.NudgeEtalonPhoto(0, 1);  e.Handled = true; break;
+            default: return;
+        }
     }
 
     private void OnEtalonPhotoWheel(object sender, MouseWheelEventArgs e)

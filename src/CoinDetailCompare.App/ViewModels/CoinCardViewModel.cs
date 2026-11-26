@@ -228,6 +228,14 @@ public class CoinCardViewModel : ObservableObject
         set => SetProperty(ref _etalonPhotoOffsetY, Math.Clamp(value, -100, 100));
     }
 
+    /// <summary>Shift the etalon photo by dx/dy px (arrow keys once the
+    /// photo is "active" after a click); both axes are clamped to -100..100.</summary>
+    public void NudgeEtalonPhoto(int dx, int dy)
+    {
+        EtalonPhotoOffsetX += dx;
+        EtalonPhotoOffsetY += dy;
+    }
+
     /// <summary>True when the coin has an etalon above it in the DB.</summary>
     private bool _hasEtalon;
     public bool HasEtalon

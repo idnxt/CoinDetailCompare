@@ -152,7 +152,7 @@
     "layer_etalon_photo": "Etalon photo",
     "opacity": "Opacity",
     "reset": "Reset",
-    "etalon_photo_hint": "Etalon photo: drag — shift along X/Y (±100), wheel — zoom (the diff layer moves with it)",
+    "etalon_photo_hint": "Etalon photo: drag — shift along X/Y (±100), wheel — zoom, after a click arrow keys nudge by 1 px (the diff layer moves with it)",
     "diff_unavailable": "Diff layer unavailable (backend is offline)",
     "angle": "Angle",
     "scale": "Scale",

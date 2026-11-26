@@ -135,6 +135,12 @@ internal static class Program
                 var dtrans = (System.Windows.Media.TranslateTransform)dtg.Children[2];
                 Console.WriteLine($"diff overlay: loaded={diffOverlay.Source != null} translate=({dtrans.X}, {dtrans.Y}) etalon=({trans.X}, {trans.Y}) inSync={(dst.ScaleX == st.ScaleX && drot.Angle == rt.Angle && dtrans.X == trans.X && dtrans.Y == trans.Y)}");
                 Console.WriteLine($"vm.DiffImage={(vm.DiffImage != null)} status={vm.Status}");
+                // keyboard nudging: the photo is "active" after a click (focus),
+                // then the arrow keys move it by 1 px (VM path, 1:1 with the handler)
+                double kx = vm.EtalonPhotoOffsetX, ky = vm.EtalonPhotoOffsetY;
+                vm.NudgeEtalonPhoto(-1, +1);
+                coinCard.UpdateLayout();
+                Console.WriteLine($"after keyboard: vm=({vm.EtalonPhotoOffsetX}, {vm.EtalonPhotoOffsetY}) expect=({kx - 1}, {ky + 1}) ok={(vm.EtalonPhotoOffsetX == kx - 1 && vm.EtalonPhotoOffsetY == ky + 1)}");
                 Console.WriteLine("step: find similar + preview + pick etalon");
                 void WaitIdle()
                 {

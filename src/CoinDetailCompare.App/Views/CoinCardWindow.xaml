@@ -137,10 +137,12 @@
                            Visibility="{Binding ShowEtalonPhoto, Converter={StaticResource BoolToVis}}"
                            RenderTransformOrigin="0.5,0.5"
                            Cursor="SizeAll"
+                           Focusable="True"
                            MouseLeftButtonDown="OnEtalonPhotoMouseDown"
                            MouseMove="OnEtalonPhotoMouseMove"
                            MouseLeftButtonUp="OnEtalonPhotoMouseUp"
-                           MouseWheel="OnEtalonPhotoWheel">
+                           MouseWheel="OnEtalonPhotoWheel"
+                           PreviewKeyDown="OnEtalonPhotoKeyDown">
                         <Image.RenderTransform>
                             <TransformGroup>
                                 <ScaleTransform ScaleX="{Binding EtalonPhotoScale}"
