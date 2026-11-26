@@ -164,6 +164,9 @@ internal static class Program
                     System.Windows.Threading.Dispatcher.PushFrame(frame);
                 }
                 int origEtalon = vm.EtalonId ?? -1;
+                // pick now also copies the etalon's fields into the duplicate,
+                // so snapshot the coin and restore it verbatim afterwards
+                var snapshot = db.GetCoin(vm.CoinId);
                 // Wait on the concrete observable (candidates populated), not IsBusy:
                 // the fire-and-forget command makes IsBusy unreliable here.
                 void WaitCandidates()
@@ -207,13 +210,33 @@ internal static class Program
                         WaitIdle();
                         WaitDiff(true);
                         Console.WriteLine($"picked: etalon={vm.EtalonId} (expected {vm.SimilarCandidates[0].CoinId}) previewId={vm.PreviewEtalonId} status={vm.Status}");
-                        // restore the original etalon so the catalog data is untouched
+                        // picking must mark the coin as a duplicate and copy the
+                        // etalon's non-individual fields (type, year, mint, price)
+                        var pickedCoin = db.GetCoin(vm.SimilarCandidates[0].CoinId);
+                        var dupCoin = db.GetCoin(vm.CoinId);
+                        bool fieldsOk = pickedCoin is not null &&
+                            dupCoin is not null &&
+                            dupCoin.SourceKind == CoinDetailCompare.App.Models.SourceKind.Duplicate &&
+                            dupCoin.TypeId == pickedCoin.TypeId &&
+                            dupCoin.MintYear == pickedCoin.MintYear &&
+                            dupCoin.Mint == pickedCoin.Mint &&
+                            dupCoin.Price == pickedCoin.Price;
+                        bool individualKept = dupCoin is not null && snapshot is not null &&
+                            dupCoin.AlbumName == snapshot.AlbumName &&
+                            dupCoin.PageNo == snapshot.PageNo &&
+                            dupCoin.OrderNo == snapshot.OrderNo &&
+                            dupCoin.Quality == snapshot.Quality &&
+                            dupCoin.IsAnomaly == snapshot.IsAnomaly;
+                        Console.WriteLine($"picked fields: isDup(vm)={vm.IsDuplicate} kind={dupCoin?.SourceKind} fieldsOk={fieldsOk} individualKept={individualKept}");
+                        // restore the original etalon, then the coin verbatim,
+                        // so the catalog data is untouched
                         vm.SelectedSimilar = orig;
                         WaitIdle();
                         vm.PickEtalonCommand.Execute(null);
                         WaitIdle();
                         WaitDiff(origEtalon > 0);
                         Console.WriteLine($"restored: etalon={vm.EtalonId} (orig {origEtalon}) ok={vm.EtalonId == origEtalon}");
+                        db.SaveCoin(snapshot);
                     }
                     else
                     {

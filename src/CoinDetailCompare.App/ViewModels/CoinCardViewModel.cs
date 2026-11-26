@@ -52,12 +52,18 @@ public class CoinCardViewModel : ObservableObject
         {
             if (!SetProperty(ref _side, value)) return;
             OnPropertyChanged(nameof(SideName));
+            OnPropertyChanged(nameof(SwapSideLabel));
             RefreshImages();
         }
     }
 
     public string SideName =>
         Side == CoinSide.Obverse ? T("capture.obverse") : T("capture.reverse");
+
+    /// <summary>Header side-switch button label: the side that will be
+    /// shown after the click ("Аверс"/"Реверс").</summary>
+    public string SwapSideLabel =>
+        Side == CoinSide.Obverse ? T("capture.reverse") : T("capture.obverse");
 
     // ---- layers ----
     private ImageSource? _baseImage;
@@ -884,7 +890,10 @@ public class CoinCardViewModel : ObservableObject
 
     /// <summary>Set (or clear) the etalon in the DB and refresh every card
     /// state that depends on it: base/has-etalon flags, label, photos,
-    /// diff layer, compare and anomaly.</summary>
+    /// diff layer, compare and anomaly.
+    /// When an etalon is set, the coin becomes a duplicate and inherits
+    /// all etalon data except the individual fields (album/page/number,
+    /// grade, anomaly) — those stay as the duplicate's own.</summary>
     private void ApplyEtalon(int? etalonId)
     {
         try
@@ -892,6 +901,8 @@ public class CoinCardViewModel : ObservableObject
             var c = _db.GetCoin(CoinId);
             if (c is null) return;
             c.EtalonId = etalonId;
+            if (etalonId is int pickEid)
+                CopyFromEtalon(c, pickEid);
             _db.SaveCoin(c);
             _etalonId = etalonId;
             _previewEtalonId = null; // the saved etalon becomes the effective one
@@ -903,6 +914,14 @@ public class CoinCardViewModel : ObservableObject
             EtalonPhotoScale = 1.0;
             EtalonPhotoOffsetX = 0;
             EtalonPhotoOffsetY = 0;
+            if (etalonId is not null)
+            {
+                // reflect the inherited fields and the duplicate status in the UI
+                Name = c.TypeId is int tid ? _db.GetCoinType(tid)?.Name ?? "" : "";
+                MintYear = c.MintYear ?? "";
+                Mint = c.Mint ?? "";
+                IsDuplicate = true;
+            }
             RefreshImages();
             if (HasEtalon && etalonId is int newEid)
             {
@@ -919,6 +938,25 @@ public class CoinCardViewModel : ObservableObject
         {
             Status = $"{T("status.error")}: {ex.Message}";
         }
+    }
+
+    /// <summary>Copy the etalon's data into the duplicate's record:
+    /// type (name), mint year, mint, price, Numista link.
+    /// Individual fields are NOT touched: album/page/number, grade,
+    /// anomaly flag/description — and the duplicate keeps its own
+    /// photos, vectors, heatmaps and annotation layers.</summary>
+    private void CopyFromEtalon(Coin duplicate, int etalonId)
+    {
+        var e = _db.GetCoin(etalonId);
+        if (e is null) return;
+        duplicate.SourceKind = SourceKind.Duplicate;
+        // inherit the etalon's type (name); keep the duplicate's own type
+        // when the etalon has none
+        if (e.TypeId is int etid) duplicate.TypeId = etid;
+        duplicate.MintYear = e.MintYear;
+        duplicate.Mint = e.Mint;
+        duplicate.Price = e.Price;
+        duplicate.NumistaUrl = e.NumistaUrl;
     }
 
     // ---- annotation layer ----

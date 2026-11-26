@@ -14,103 +14,99 @@
         <!-- ===== Left: coin layers (same composition as during photo) ===== -->
         <Border Grid.Column="0" Style="{StaticResource Card}" Margin="0,0,8,0">
             <StackPanel>
-                <DockPanel>
-                    <Button DockPanel.Dock="Right" Style="{StaticResource Btn}" Margin="0"
-                            Content="{Binding CompareSwap, Source={StaticResource Strings}}"
-                            Command="{Binding SwapSideCommand}"
-                            IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}" />
-                    <TextBlock Style="{StaticResource Title}" Text="{Binding SideName}" />
-                </DockPanel>
+                <!-- layer control, 3 columns:
+                     row 1: v Тепловая карта | v Слой разницы | v Фото эталона
+                     row 2: (прозрачность ТК) | (прозрачность СР) | (прозрачность ФЭ)
+                     row 3: (угол) | (масштаб) | X Y -->
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="1.6*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
 
-                <!-- layer toggles: heatmap (with opacity) + annotations -->
-                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                    <StackPanel Width="180" Margin="0,0,16,0">
-                        <StackPanel Orientation="Horizontal">
-                            <Slider x:Name="HeatmapOpacitySlider" Width="66"
-                                    Minimum="0" Maximum="100" VerticalAlignment="Center"
-                                    Value="{Binding HeatmapOpacity}"
-                                    ToolTip="{Binding CardOpacity, Source={StaticResource Strings}}" />
-                            <TextBlock Text="{Binding HeatmapOpacity}" VerticalAlignment="Center"
-                                       Margin="3,0,0,0" FontSize="11" />
-                        </StackPanel>
-                        <CheckBox Content="{Binding CompareHeatmap, Source={StaticResource Strings}}"
-                                  IsChecked="{Binding ShowHeatmap}" Margin="0,3,0,0" />
-                    </StackPanel>
-                    <CheckBox Content="{Binding CardAnnotations, Source={StaticResource Strings}}"
-                              IsChecked="{Binding ShowAnnotations}" VerticalAlignment="Center" />
-                </StackPanel>
+                    <CheckBox Grid.Row="0" Grid.Column="0" Margin="0,0,8,6"
+                              Content="{Binding CompareHeatmap, Source={StaticResource Strings}}"
+                              IsChecked="{Binding ShowHeatmap}" />
+                    <CheckBox Grid.Row="0" Grid.Column="1" Margin="0,0,8,6"
+                              Content="{Binding CardLayerDiff, Source={StaticResource Strings}}"
+                              IsChecked="{Binding ShowDiffLayer}" />
+                    <CheckBox Grid.Row="0" Grid.Column="2" Margin="0,0,0,6"
+                              Content="{Binding CardLayerEtalonPhoto, Source={StaticResource Strings}}"
+                              IsChecked="{Binding ShowEtalonPhoto}" />
 
-                <!-- vector/photo layers: color picker + opacity above each layer label -->
-                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                    <StackPanel Width="180" Margin="0,0,16,0">
-                        <StackPanel Orientation="Horizontal">
-                            <Button x:Name="DiffColorBtn" Width="22" Height="14" Padding="0"
-                                    BorderBrush="#FF555555" BorderThickness="1"
-                                    ToolTip="{Binding CardOpacity, Source={StaticResource Strings}}"
-                                    Click="OnPickDiffColor" />
-                            <Slider x:Name="DiffOpacitySlider" Width="66" Margin="4,0,0,0"
-                                    Minimum="0" Maximum="100" VerticalAlignment="Center"
-                                    Value="{Binding DiffOpacity}"
-                                    ToolTip="{Binding CardOpacity, Source={StaticResource Strings}}" />
-                            <TextBlock Text="{Binding DiffOpacity}" VerticalAlignment="Center"
-                                       Margin="3,0,0,0" FontSize="11" />
-                        </StackPanel>
-                        <CheckBox Content="{Binding CardLayerDiff, Source={StaticResource Strings}}"
-                                  IsChecked="{Binding ShowDiffLayer}" Margin="0,3,0,0" />
+                    <StackPanel Grid.Row="1" Grid.Column="0" Orientation="Horizontal" Margin="0,0,8,6">
+                        <Slider x:Name="HeatmapOpacitySlider" Width="60"
+                                Minimum="0" Maximum="100" VerticalAlignment="Center"
+                                Value="{Binding HeatmapOpacity}"
+                                ToolTip="{Binding CardOpacity, Source={StaticResource Strings}}" />
+                        <TextBlock Text="{Binding HeatmapOpacity}" VerticalAlignment="Center"
+                                   Margin="3,0,0,0" FontSize="11" />
                     </StackPanel>
-                    <StackPanel Width="200" Margin="0,0,16,0">
-                        <StackPanel Orientation="Horizontal">
-                            <Slider x:Name="EtalonPhotoOpacitySlider" Width="66"
-                                    Minimum="0" Maximum="100" VerticalAlignment="Center"
-                                    Value="{Binding EtalonPhotoOpacity}"
-                                    ToolTip="{Binding CardOpacity, Source={StaticResource Strings}}" />
-                            <TextBlock Text="{Binding EtalonPhotoOpacity}" VerticalAlignment="Center"
-                                       Margin="3,0,0,0" FontSize="11" />
-                        </StackPanel>
-                        <CheckBox Content="{Binding CardLayerEtalonPhoto, Source={StaticResource Strings}}"
-                                  IsChecked="{Binding ShowEtalonPhoto}" Margin="0,3,0,0" />
-                        <!-- manual rotation / zoom: slider + 0.01-precision box (zoom base 100) -->
-                        <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
-                            <TextBlock Text="{Binding CardAngle, Source={StaticResource Strings}}"
-                                       VerticalAlignment="Center" Margin="0,0,4,0" />
-                            <Slider x:Name="EtalonPhotoAngleSlider" Width="66" Minimum="-180" Maximum="180"
-                                    Value="{Binding EtalonPhotoAngle}" VerticalAlignment="Center" />
-                            <controls:NumericUpDown x:Name="AngleBox" Width="74" Margin="3,0,0,0"
-                                                   Value="{Binding EtalonPhotoAngle, Mode=TwoWay}"
-                                                   Minimum="-180" Maximum="180" Step="0.01"
-                                                   VerticalAlignment="Center" />
-                        </StackPanel>
-                        <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
-                            <TextBlock Text="{Binding CardScale, Source={StaticResource Strings}}"
-                                       VerticalAlignment="Center" Margin="0,0,4,0" />
-                            <Slider x:Name="EtalonPhotoScaleSlider" Width="66" Minimum="80" Maximum="120"
-                                    Value="{Binding EtalonPhotoScalePct}" VerticalAlignment="Center" />
-                            <controls:NumericUpDown x:Name="ScaleBox" Width="74" Margin="3,0,0,0"
-                                                   Value="{Binding EtalonPhotoScalePct, Mode=TwoWay}"
-                                                   Minimum="80" Maximum="120" Step="0.01"
-                                                   VerticalAlignment="Center" />
-                        </StackPanel>
-                        <!-- manual XY shift (px, -100..100, base 0, 0.01 precision) -->
-                        <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
-                            <TextBlock Text="X" VerticalAlignment="Center" Margin="0,0,4,0" />
-                            <Slider x:Name="EtalonPhotoXSlider" Width="66" Minimum="-100" Maximum="100"
-                                    Value="{Binding EtalonPhotoOffsetX}" VerticalAlignment="Center" />
-                            <controls:NumericUpDown x:Name="XBox" Width="74" Margin="3,0,0,0"
-                                                    Value="{Binding EtalonPhotoOffsetX, Mode=TwoWay}"
-                                                    Minimum="-100" Maximum="100" Step="0.01"
-                                                    VerticalAlignment="Center" />
-                        </StackPanel>
-                        <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
-                            <TextBlock Text="Y" VerticalAlignment="Center" Margin="0,0,4,0" />
-                            <Slider x:Name="EtalonPhotoYSlider" Width="66" Minimum="-100" Maximum="100"
-                                    Value="{Binding EtalonPhotoOffsetY}" VerticalAlignment="Center" />
-                            <controls:NumericUpDown x:Name="YBox" Width="74" Margin="3,0,0,0"
-                                                    Value="{Binding EtalonPhotoOffsetY, Mode=TwoWay}"
-                                                    Minimum="-100" Maximum="100" Step="0.01"
-                                                    VerticalAlignment="Center" />
-                        </StackPanel>
+                    <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,0,8,6">
+                        <Button x:Name="DiffColorBtn" Width="22" Height="14" Padding="0"
+                                BorderBrush="#FF555555" BorderThickness="1"
+                                ToolTip="{Binding CardOpacity, Source={StaticResource Strings}}"
+                                Click="OnPickDiffColor" />
+                        <Slider x:Name="DiffOpacitySlider" Width="60" Margin="4,0,0,0"
+                                Minimum="0" Maximum="100" VerticalAlignment="Center"
+                                Value="{Binding DiffOpacity}"
+                                ToolTip="{Binding CardOpacity, Source={StaticResource Strings}}" />
+                        <TextBlock Text="{Binding DiffOpacity}" VerticalAlignment="Center"
+                                   Margin="3,0,0,0" FontSize="11" />
                     </StackPanel>
-                </StackPanel>
+                    <StackPanel Grid.Row="1" Grid.Column="2" Orientation="Horizontal" Margin="0,0,0,6">
+                        <Slider x:Name="EtalonPhotoOpacitySlider" Width="60"
+                                Minimum="0" Maximum="100" VerticalAlignment="Center"
+                                Value="{Binding EtalonPhotoOpacity}"
+                                ToolTip="{Binding CardOpacity, Source={StaticResource Strings}}" />
+                        <TextBlock Text="{Binding EtalonPhotoOpacity}" VerticalAlignment="Center"
+                                   Margin="3,0,0,0" FontSize="11" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Row="2" Grid.Column="0" Orientation="Horizontal" Margin="0,0,8,0">
+                        <TextBlock Text="{Binding CardAngle, Source={StaticResource Strings}}"
+                                   VerticalAlignment="Center" Margin="0,0,4,0" />
+                        <Slider x:Name="EtalonPhotoAngleSlider" Width="56" Minimum="-180" Maximum="180"
+                                Value="{Binding EtalonPhotoAngle}" VerticalAlignment="Center" />
+                        <controls:NumericUpDown x:Name="AngleBox" Width="68" Margin="3,0,0,0"
+                                                Value="{Binding EtalonPhotoAngle, Mode=TwoWay}"
+                                                Minimum="-180" Maximum="180" Step="0.01"
+                                                VerticalAlignment="Center" />
+                    </StackPanel>
+                    <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="0,0,8,0">
+                        <TextBlock Text="{Binding CardScale, Source={StaticResource Strings}}"
+                                   VerticalAlignment="Center" Margin="0,0,4,0" />
+                        <Slider x:Name="EtalonPhotoScaleSlider" Width="56" Minimum="80" Maximum="120"
+                                Value="{Binding EtalonPhotoScalePct}" VerticalAlignment="Center" />
+                        <controls:NumericUpDown x:Name="ScaleBox" Width="68" Margin="3,0,0,0"
+                                                Value="{Binding EtalonPhotoScalePct, Mode=TwoWay}"
+                                                Minimum="80" Maximum="120" Step="0.01"
+                                                VerticalAlignment="Center" />
+                    </StackPanel>
+                    <!-- manual XY shift (px, -100..100, base 0, 0.01 precision) -->
+                    <StackPanel Grid.Row="2" Grid.Column="2" Orientation="Horizontal" Margin="0,0,0,0">
+                        <TextBlock Text="X" VerticalAlignment="Center" Margin="0,0,4,0" />
+                        <Slider x:Name="EtalonPhotoXSlider" Width="50" Minimum="-100" Maximum="100"
+                                Value="{Binding EtalonPhotoOffsetX}" VerticalAlignment="Center" />
+                        <controls:NumericUpDown x:Name="XBox" Width="66" Margin="3,0,0,0"
+                                                Value="{Binding EtalonPhotoOffsetX, Mode=TwoWay}"
+                                                Minimum="-100" Maximum="100" Step="0.01"
+                                                VerticalAlignment="Center" />
+                        <TextBlock Text="Y" VerticalAlignment="Center" Margin="6,0,4,0" />
+                        <Slider x:Name="EtalonPhotoYSlider" Width="50" Minimum="-100" Maximum="100"
+                                Value="{Binding EtalonPhotoOffsetY}" VerticalAlignment="Center" />
+                        <controls:NumericUpDown x:Name="YBox" Width="66" Margin="3,0,0,0"
+                                                Value="{Binding EtalonPhotoOffsetY, Mode=TwoWay}"
+                                                Minimum="-100" Maximum="100" Step="0.01"
+                                                VerticalAlignment="Center" />
+                    </StackPanel>
+                </Grid>
 
                 <!-- base photo + overlays -->
                 <Grid>
@@ -189,7 +185,15 @@
         <Border Grid.Column="1" Style="{StaticResource Card}">
             <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <StackPanel>
-                    <TextBlock Style="{StaticResource Title}" Text="{Binding Header}" />
+                    <!-- header row: title + side-switch button ("Аверс"/"Реверс") -->
+                    <DockPanel LastChildFill="False">
+                        <Button DockPanel.Dock="Right" Style="{StaticResource Btn}" Margin="0,0,0,8"
+                                Padding="10,3"
+                                Content="{Binding SwapSideLabel}"
+                                Command="{Binding SwapSideCommand}"
+                                IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}" />
+                        <TextBlock Style="{StaticResource Title}" Text="{Binding Header}" />
+                    </DockPanel>
                     <TextBlock Text="{Binding EtalonLabel}" Margin="0,0,0,8" TextWrapping="Wrap" />
 
                     <TextBlock Text="{Binding KindLabel, Source={StaticResource Strings}}" Margin="0,6,0,2" />
@@ -256,8 +260,9 @@
                             IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}" />
 
                     <!-- annotation tools -->
-                    <TextBlock Style="{StaticResource Title}" Margin="0,16,0,8"
-                               Text="{Binding AnnotationSaveLayer, Source={StaticResource Strings}}" />
+                    <CheckBox Margin="0,16,0,8" VerticalContentAlignment="Center"
+                              Content="{Binding AnnotationSaveLayer, Source={StaticResource Strings}}"
+                              IsChecked="{Binding ShowAnnotations}" />
                     <ComboBox ItemsSource="{Binding AnnotationToolItems}"
                               SelectedItem="{Binding AnnotationToolName}" Margin="0,0,0,6" />
                     <StackPanel Orientation="Horizontal">
