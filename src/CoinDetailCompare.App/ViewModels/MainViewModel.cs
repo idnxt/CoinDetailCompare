@@ -129,7 +129,6 @@ public class MainViewModel : ObservableObject
         ClearAnnotationsCommand = new RelayCommand(ClearAnnotations);
         SaveAnnotationsCommand = new RelayCommand(async () => await SaveAnnotationsAsync());
         OpenCatalogCommand = new RelayCommand(OpenCatalog);
-        RefreshCatalogTreeCommand = new RelayCommand(RefreshCatalogTree);
         EditCoinFromTreeCommand = new RelayCommand<CatalogTreeNode>(EditCoinFromTree);
         RefreshCatalogTree();
 
@@ -341,7 +340,6 @@ public class MainViewModel : ObservableObject
     public RelayCommand ValidateNumistaCommand { get; }
     public RelayCommand ApplyNumistaItemCommand { get; }
     public RelayCommand OpenCatalogCommand { get; }
-    public RelayCommand RefreshCatalogTreeCommand { get; }
     public RelayCommand<CatalogTreeNode> EditCoinFromTreeCommand { get; }
 
     public string T(string key) => _loc.T(key);
